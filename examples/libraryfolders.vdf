@@ -1,0 +1,28 @@
+"libraryfolders"
+{
+	"0"
+	{
+		"path"		"/home/deck/.local/share/Steam"
+		"label"		""
+		"contentid"		"4573433359127955201"
+		"totalsize"		"0"
+		"update_clean_bytes_tally"		"271333244"
+		"time_last_update_verified"		"1768049662"
+		"apps"
+		{
+			"228980"		"271333244"
+		}
+	}
+	"1"
+	{
+		"path"		"/home/deck/sdcard/SteamLibrary"
+		"label"		""
+		"contentid"		"5180868797158661764"
+		"totalsize"		"512709619712"
+		"update_clean_bytes_tally"		"4119767997"
+		"time_last_update_verified"		"1768050090"
+		"apps"
+		{
+		}
+	}
+}

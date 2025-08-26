@@ -1,0 +1,22 @@
+{
+  "name": "steamos-mount",
+  "version": "0.1.0",
+  "description": "Ergonomic NTFS/exFAT drive auto-mounter for SteamOS",
+  "scripts": {},
+  "keywords": [
+    "steamos",
+    "mount",
+    "ntfs",
+    "exfat",
+    "game-mode",
+    "steam",
+    "automount",
+    "drive",
+    "disk",
+    "mounter",
+    "ergonomic",
+    "fstab"
+  ],
+  "author": "aitiotekt",
+  "license": "MIT"
+}

@@ -1,0 +1,12 @@
+{
+    "permissions": {
+        "deny": [
+            "*(**/.env*)",
+            "*(**/.env)"
+        ],
+        "allow": [
+            "*(**/.env.example)",
+            "*(**/.env.*.example)"
+        ]
+    }
+}

@@ -1,0 +1,16 @@
+# Static information about the filesystems.
+# See fstab(5) for details.
+
+# <file system> <dir> <type> <options> <dump> <pass>
+# SteamOS partitions
+#/dev/disk/by-partsets/self/rootfs /       ext4    defaults                0       1
+#/dev/disk/by-partsets/self/var    /var    ext4    defaults                0       2
+/dev/disk/by-partsets/self/efi    /efi    vfat    defaults,nofail,umask=0077,x-systemd.automount,x-systemd.idle-timeout=1min 0       2
+/dev/disk/by-partsets/shared/esp  /esp    vfat    defaults,nofail,umask=0077,x-systemd.automount,x-systemd.idle-timeout=1min 0       2
+/dev/disk/by-partsets/shared/home /home   ext4    defaults,nofail,x-systemd.growfs 0       2
+# managed by steamos-auto-mount
+PARTUUID=13af05c4-4142-4597-abcc-5b1acd2d7294 /home/deck/system ntfs3 uid=1000,gid=1000,rw,umask=000,discard,prealloc,nofail,x-systemd.device-timeout=3s 0 0
+# managed by steamos-auto-mount
+PARTUUID=f1eca64c-0d35-11ef-b8d7-e2461f749644 /home/deck/games ntfs3 uid=1000,gid=1000,rw,umask=000,discard,prealloc,nofail,x-systemd.device-timeout=3s 0 0
+# managed by steamos-auto-mount
+PARTUUID=039ba93c-444a-914f-a64b-3b72b6a92de1 /home/deck/sdcard fstab uid=1000,gid=1000,rw,umask=000,discard,nofail,noauto,x-systemd.automount,x-systemd.idle-timeout=60s 0 0

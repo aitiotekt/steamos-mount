@@ -1,0 +1,40 @@
+# Environment Variables
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# General
+.DS_Store
+*.log
+
+# Editors/IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Rust
+target/
+**/*.rs.bk
+Cargo.lock
+
+# Node.js
+node_modules/
+dist/
+build/
+.npm
+.pnpm-store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+.pytest_cache/
+*.egg-info/
+.mypy_cache/
+
+# System specific
+Thumbs.db

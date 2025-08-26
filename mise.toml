@@ -1,0 +1,11 @@
+[tools]
+node = "lts"
+pnpm = "latest"
+python = "latest"
+rust = "nightly"
+uv = "latest"
+jq = "latest"
+
+[env]
+# Ensure cargo bin is in PATH
+PATH = "./target/debug:./target/release:$PATH"
