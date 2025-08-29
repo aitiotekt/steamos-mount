@@ -22,3 +22,7 @@ A tool designed to ergonomically mount NTFS/exFAT drives on SteamOS and automati
 ## License
 
 [MIT](LICENSE.md)
+
+## About Development
+
+This project is primarily driven by personal interest and the exploration of AI-assisted development. AI is heavily involved in the development process.
