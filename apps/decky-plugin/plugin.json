@@ -1,0 +1,18 @@
+{
+    "name": "steamos-mount",
+    "author": "Aitiotekt",
+    "flags": [
+        "root"
+    ],
+    "scripts": {
+        "tags": [
+            "mount",
+            "filesystem",
+            "ntfs",
+            "exfat",
+            "root"
+        ],
+        "description": "A tool designed to ergonomically mount NTFS/exFAT drives on SteamOS and automatically configure them as Steam libraries.",
+        "image": "TODO"
+    }
+}

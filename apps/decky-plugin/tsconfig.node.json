@@ -1,0 +1,7 @@
+{
+    "extends": "../../tsconfig.nodebase.json",
+    "compilerOptions": {},
+    "include": [
+        "rollup.config.js"
+    ]
+}

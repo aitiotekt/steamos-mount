@@ -13,6 +13,14 @@
 - [软件设计](docs/SOFTWARE_DESIGN_zh.md) (中文) | [Software Design](docs/SOFTWARE_DESIGN.md) (English)
 - [技术规范](docs/TECH_SPEC_zh.md) (中文) | [Technical Specification](docs/TECH_SPEC.md) (English)
 
+## 组件
+
+- **steamos-mount-core**：核心库，负责磁盘扫描、fstab 管理和 Steam 库注入。
+- **steamos-mount-cli**：命令行工具，适用于自动化和脚本调用。
+- **steamos-mount-tauri**：桌面模式应用（Tauri）。
+- **steamos-mount-decky**：游戏模式 Decky 插件。
+- **steamos-mount-tui**：终端交互式 UI。
+
 ## 特性
 
 - **人体工程学优先**：针对不同磁盘类型（SSD、SD 卡）提供简单的预设。

@@ -1,0 +1,12 @@
+[project]
+name = "steamos-mount-decky"
+version = "0.1.0"
+description = "Decky plugin for steamos-mount"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.11",
+]

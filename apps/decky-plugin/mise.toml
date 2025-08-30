@@ -1,0 +1,8 @@
+
+[tools]
+node = "lts"
+pnpm = "9"
+python = "latest"
+uv = "latest"
+jq = "latest"
+rust = "nightly"

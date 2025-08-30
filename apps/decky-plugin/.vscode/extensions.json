@@ -1,0 +1,7 @@
+{
+    "recommendations": [
+        "hverlin.mise-vscode",
+        "astral-sh.ty",
+        "charliermarsh.ruff",
+    ]
+}

@@ -1,0 +1,6 @@
+{
+    "extends": "./tsconfig.uibase.json",
+    "compilerOptions": {
+        "jsx": "react-jsx",
+    }
+}

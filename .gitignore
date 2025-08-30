@@ -9,10 +9,12 @@
 *.log
 
 # Editors/IDEs
-.idea/
-.vscode/
-*.swp
-*.swo
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
 # Rust
 target/
@@ -22,6 +24,9 @@ Cargo.lock
 # Node.js
 node_modules/
 dist/
+dist-ssr/
+**/dist/
+**/dist-ssr/
 build/
 .npm
 .pnpm-store

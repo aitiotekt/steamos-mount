@@ -22,15 +22,15 @@ Adopting a **Core-Client** separation architecture, where core logic sinks down 
 
 ### 2.1 Technology Stack
 
-- **Core Binary (Backend)**: `Rust`
+- **Core Library + CLI**: `Rust`
   - **Responsibilities**: Disk scanning (`lsblk`), Fstab parsing & writing, `ntfsfix` repair, Steam VDF injection, Systemd control.
   - **Advantages**: High performance, type safety, easy cross-process invocation.
 - **TUI (Terminal Interface)**: `Rust` + `Ratatui`
   - **Scenarios**: SSH remote management, Konsole, and terminal fallback within Decky plugins.
 - **Game Mode GUI**: `Python` (Decky Backend) + `React` (Frontend)
-  - **Scenarios**: Native experience in Game Mode, invoking Core Binary via Decky API.
+  - **Scenarios**: Native experience in Game Mode. The plugin invokes `steamos-mount-cli` downloaded by `install.sh` (Decky CI lacks a Rust toolchain).
 - **Desktop Mode GUI**: `Rust` + `Tauri`
-  - **Scenarios**: Full configuration tool in Desktop Mode.
+  - **Scenarios**: Full configuration tool in Desktop Mode. UI components are maintained locally (not shared with Decky).
 
 ```plaintext
 steamos-mount/
@@ -41,21 +41,20 @@ steamos-mount/
 ├── pnpm-workspace.yaml        # [JS Workspace] Aggregates all package.json
 ├── pyproject.toml             # [Python Workspace] Aggregates all scattered pyproject.toml
 ├── apps/                      # [Executable App Layer]
+│   ├── cli/                   # Command-line interface
 │   ├── tauri-app/             # Desktop GUI
 │   │   ├── src-tauri/         # [Rust] Depends on packages/core
-│   │   └── src/               # [React] Depends on packages/ui-kit
+│   │   └── src/               # [React] Local UI components (not shared with Decky)
 │   │
 │   ├── decky-plugin/          # Game Mode Plugin
-│   │   ├── src/               # [React] Frontend UI
-│   │   ├── backend-rs/        # [Rust] CLI tool generated for Python invocation
+│   │   ├── src/               # [React] Local UI components
 │   │   └── py_modules/        # [Python] Decky Python entry point
 │   │
 │   └── tui-app/               # [Rust] Pure Terminal App
 │       └── src/               # Depends on packages/core
 │
 └── packages/                  # [Shared Library Layer]
-    ├── core/                  # [Rust] Core business logic (lsblk, fstab, mount)
-    └── ui-kit/                # [React] Shared UI component library
+    └── core/                  # [Rust] Core business logic (lsblk, fstab, mount)
 ```
 
 ### 2.2 Data Flow
@@ -64,6 +63,13 @@ steamos-mount/
 2.  **Present**: UI reads structured data returned by Core (including Label, UUID, FSTYPE, MOUNTPOINT).
 3.  **Configure**: User selects disk and Preset in UI.
 4.  **Execute**: Core receives instructions -> Backups fstab -> Writes fstab -> Reloads Systemd -> Mounts -> (Optional) Injects Steam Library -> Restarts UI.
+
+### 2.3 Repository Notes (Development)
+
+- **Main repo**: https://github.com/aitiotekt/steamos-mount
+- **Decky subtree repo**: https://github.com/aitiotekt/steamos-mount-decky
+- **Why subtree**: decky-plugin-database uses submodules that can only target repo roots, so the Decky plugin is synced as a git subtree.
+- **UI components**: Tauri and Decky UIs do not share a UI kit due to Decky pipeline constraints.
 
 ---
 

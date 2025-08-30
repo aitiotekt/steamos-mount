@@ -13,6 +13,14 @@ A tool designed to ergonomically mount NTFS/exFAT drives on SteamOS and automati
 - [Software Design](docs/SOFTWARE_DESIGN.md)
 - [Technical Specification](docs/TECH_SPEC.md)
 
+## Components
+
+- **steamos-mount-core**: Core library for disk scanning, fstab management, and Steam library injection.
+- **steamos-mount-cli**: Command-line interface for automation and scripting.
+- **steamos-mount-tauri**: Desktop Mode app built with Tauri.
+- **steamos-mount-decky**: Game Mode Decky plugin.
+- **steamos-mount-tui**: Terminal interactive UI.
+
 ## Features
 
 - **Ergonomics First**: Simple presets for different drive types (SSD, SD Card).

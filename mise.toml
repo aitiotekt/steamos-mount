@@ -1,6 +1,6 @@
 [tools]
 node = "lts"
-pnpm = "latest"
+pnpm = "10.28.0"
 python = "latest"
 rust = "nightly"
 uv = "latest"

@@ -1,0 +1,7 @@
+{
+  "extends": "../../tsconfig.nodebase.json",
+  "compilerOptions": {},
+  "include": [
+    "vite.config.ts"
+  ]
+}

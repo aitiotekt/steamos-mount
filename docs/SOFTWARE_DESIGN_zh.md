@@ -22,15 +22,15 @@
 
 ### 2.1 技术栈
 
-- **Core Binary (后端)**: `Rust`
+- **核心库 + CLI**: `Rust`
   - **职责**: 磁盘扫描 (`lsblk`)、Fstab 解析与写入、`ntfsfix` 修复、Steam VDF 注入、Systemd 控制。
   - **优势**: 高性能、类型安全、易于跨进程调用。
 - **TUI (终端界面)**: `Rust` + `Ratatui`
   - **场景**: SSH 远程管理、Konsole、以及 Decky 插件内的终端保底方案。
 - **Game Mode GUI**: `Python` (Decky Backend) + `React` (Frontend)
-  - **场景**: 游戏模式下的原生体验，通过 Decky API 调用 Core Binary。
+  - **场景**: 游戏模式下的原生体验，通过 `install.sh` 下载 `steamos-mount-cli` 进行交互（Decky CI 缺少 Rust 工具链）。
 - **Desktop Mode GUI**: `Rust` + `Tauri`
-  - **场景**: 桌面模式下的完整配置工具。
+  - **场景**: 桌面模式下的完整配置工具，UI 组件本地维护（不与 Decky 共享）。
 
 ```plaintext
 steamos-mount/
@@ -41,21 +41,20 @@ steamos-mount/
 ├── pnpm-workspace.yaml        # [JS Workspace] 聚合所有 package.json
 ├── pyproject.toml             # [Python Workspace] 聚合所有散落的 pyproject.toml
 ├── apps/                      # [可执行应用层]
+│   ├── cli/                   # 命令行工具
 │   ├── tauri-app/             # 桌面端 GUI
 │   │   ├── src-tauri/         # [Rust] 依赖 packages/core
-│   │   └── src/               # [React] 依赖 packages/ui-kit
+│   │   └── src/               # [React] 本地 UI 组件（不与 Decky 共享）
 │   │
 │   ├── decky-plugin/          # 游戏模式插件
 │   │   ├── src/               # [React] 前端 UI
-│   │   ├── backend-rs/        # [Rust] 用于生成被 Python 调用的 CLI 工具
 │   │   └── py_modules/        # [Python] Decky 的 Python 入口
 │   │
 │   └── tui-app/               # [Rust] 纯终端界面应用
 │       └── src/               # 依赖 packages/core
 │
 └── packages/                  # [共享库层]
-    ├── core/                  # [Rust] 核心业务逻辑 (lsblk, fstab, mount)
-    └── ui-kit/                # [React] 共享 UI 组件库
+    └── core/                  # [Rust] 核心业务逻辑 (lsblk, fstab, mount)
 ```
 
 ### 2.2 数据流
@@ -64,6 +63,13 @@ steamos-mount/
 2.  **呈现**: UI 读取 Core 返回的结构化数据（包含 Label, UUID, FSTYPE, MOUNTPOINT）。
 3.  **配置**: 用户在 UI 选择磁盘和预设（Preset）。
 4.  **执行**: Core 接收指令 -> 备份 fstab -> 写入 fstab -> 重载 Systemd -> 挂载 -> (可选) 注入 Steam 库 -> 重启 UI。
+
+### 2.3 仓库说明（开发者）
+
+- **主仓库**：https://github.com/aitiotekt/steamos-mount
+- **Decky subtree 仓库**：https://github.com/aitiotekt/steamos-mount-decky
+- **使用 subtree 的原因**：decky-plugin-database 的 submodules 只能指向仓库根目录，因此 Decky 插件以 git subtree 同步。
+- **UI 组件**：Tauri 与 Decky 的 UI 不共享组件库，分别维护。
 
 ---
 

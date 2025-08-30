@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"name": "decky-plugin",
+			"path": "../apps/decky-plugin"
+		},
+		{
+			"name": "steamos-mount",
+			"path": ".."
+		}
+	],
+	"settings": {
+		// use astral-sh ty as language server, prevent two language servers, must install ty-vscode extension
+		"python.languageServer": "None",
+		"ruff.nativeServer": "auto"
+	}
+}

@@ -1,0 +1,16 @@
+{
+    "[python]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.codeActionsOnSave": {
+            "source.fixAll": "explicit",
+            "source.organizeImports": "explicit"
+        }
+    },
+    "python.defaultInterpreterPath": ".venv/bin/python",
+    "python.testing.pytestEnabled": true,
+    // use astral-sh ty as language server, prevent two language servers, must install ty-vscode extension
+    "python.languageServer": "None", // only works when use single folder workspace
+    "ruff.configuration": "./pyproject.toml",
+    "ruff.nativeServer": "auto" // only works when use single folder workspace
+}
