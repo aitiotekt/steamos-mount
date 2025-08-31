@@ -3,6 +3,6 @@ members = [
     "packages/core",            # Core library
     "apps/tui-app",             # TUI application
     "apps/tauri-app/src-tauri", # Tauri backend
-    "apps/daemon",              # HTTP API daemon
+    "apps/cli",                 # CLI application
 ]
 resolver = "2"
