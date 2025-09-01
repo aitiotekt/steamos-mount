@@ -68,8 +68,12 @@ pub enum Error {
     #[snafu(display("failed to mount device: {message}"))]
     Mount { message: String },
 
+    /// Invalid filesystem type.
+    #[snafu(display("Invalid filesystem type: {fs}"))]
+    InvalidFilesystem { fs: String },
+
     /// Unmount operation failed.
-    #[snafu(display("failed to unmount {}: {message}", path.display()))]
+    #[snafu(display("Failed to unmount {}: {message}", path.display()))]
     Unmount { path: PathBuf, message: String },
 
     /// Device has a dirty NTFS volume.

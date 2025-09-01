@@ -25,8 +25,9 @@
 //! // Get the first NTFS device
 //! if let Some(device) = mountable.first() {
 //!     // Generate mount configuration
-//!     let config = preset::PresetConfig::new(preset::MountPreset::Ssd);
-//!     let options = config.generate_options(device.fstype.as_deref().unwrap_or("ntfs"));
+//!     let fs = preset::SupportedFilesystem::try_from("ntfs").unwrap();
+//!     let config = preset::PresetConfig::new(fs);
+//!     let options = config.generate_options(1000, 1000);
 //!
 //!     // Create fstab entry
 //!     let mount_name = device.suggested_mount_name();

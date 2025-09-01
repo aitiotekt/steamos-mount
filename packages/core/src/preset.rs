@@ -1,8 +1,9 @@
 //! Mount preset definitions for different device types.
 //!
-//! This module provides predefined mount option sets for common scenarios:
-//! - SSD: Internal/fixed drives optimized for performance
-//! - Portable: Hot-swappable devices like SD cards and USB drives
+//! This module provides flexible mount option generation based on:
+//! - Filesystem (NTFS, exFAT, etc.)
+//! - Storage Media (Flash/SSD vs HDD)
+//! - Device Scenario (Fixed vs Removable)
 
 use serde::{Deserialize, Serialize};
 
@@ -12,129 +13,152 @@ pub const DEFAULT_UID: u32 = 1000;
 /// Default group ID for the deck user on SteamOS.
 pub const DEFAULT_GID: u32 = 1000;
 
-/// Mount preset for different device scenarios.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum MountPreset {
-    /// Internal/Fixed SSD - High performance mode.
-    ///
-    /// Optimized for NVMe SSDs or permanently connected external SSDs.
-    /// Features:
-    /// - `ntfs3` kernel driver for high performance
-    /// - `rw,noatime` to reduce metadata writes
-    /// - `discard` for TRIM support (SSD longevity)
-    /// - `prealloc` (NTFS only) for reduced fragmentation
-    /// - `x-systemd.device-timeout=3s` for quick skip on missing devices
+/// Default options applied to all mounts.
+pub const BASE_OPTIONS: &str = "umask=000,nofail,rw,noatime";
+
+/// Supported filesystem types for preset generation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SupportedFilesystem {
+    Ntfs,
+    Exfat,
+}
+
+impl TryFrom<&str> for SupportedFilesystem {
+    type Error = crate::error::Error;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        match s.to_lowercase().as_str() {
+            "ntfs" | "ntfs3" => Ok(SupportedFilesystem::Ntfs),
+            "exfat" => Ok(SupportedFilesystem::Exfat),
+            _ => Err(crate::error::Error::InvalidFilesystem { fs: s.to_string() }),
+        }
+    }
+}
+
+impl SupportedFilesystem {
+    /// Returns the preferred kernel driver name.
+    pub fn driver_name(&self) -> &'static str {
+        match self {
+            Self::Ntfs => "ntfs3",
+            Self::Exfat => "exfat",
+        }
+    }
+}
+
+/// Storage media type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum MediaType {
+    /// Flash storage (SSD, SD Card, USB Stick).
     #[default]
-    Ssd,
-
-    /// Hot-swappable SD Card/USB Drive - Portable mode.
-    ///
-    /// Optimized for devices that are frequently plugged/unplugged.
-    /// Features:
-    /// - `noauto` to prevent boot-time mounting
-    /// - `x-systemd.automount` for on-demand mounting
-    /// - `x-systemd.idle-timeout=60s` for automatic unmount after inactivity
-    Portable,
-
-    /// Custom mount options provided by the user.
-    Custom(String),
+    Flash,
+    /// Rotational hard drive (HDD).
+    Rotational,
 }
 
-impl MountPreset {
-    /// Generates the mount options string for fstab.
-    ///
-    /// # Arguments
-    /// * `fstype` - Filesystem type ("ntfs" or "exfat")
-    /// * `uid` - User ID for file ownership
-    /// * `gid` - Group ID for file ownership
-    ///
-    /// # Returns
-    /// A comma-separated string of mount options.
-    pub fn to_options(&self, fstype: &str, uid: u32, gid: u32) -> String {
-        let base_options = format!("uid={},gid={},umask=000,nofail", uid, gid);
-
-        match self {
-            MountPreset::Ssd => {
-                let mut options = vec![
-                    base_options,
-                    "rw".to_string(),
-                    "noatime".to_string(),
-                    "discard".to_string(),
-                    "x-systemd.device-timeout=3s".to_string(),
-                ];
-
-                // NTFS-specific options
-                if fstype == "ntfs" {
-                    options.push("prealloc".to_string());
-                }
-
-                options.join(",")
-            }
-            MountPreset::Portable => [
-                base_options.as_str(),
-                "noauto",
-                "x-systemd.automount",
-                "x-systemd.idle-timeout=60s",
-            ]
-            .join(","),
-            MountPreset::Custom(opts) => {
-                // Prepend base options to custom options
-                format!("{},{}", base_options, opts)
-            }
-        }
-    }
-
-    /// Returns a human-readable description of the preset.
-    pub fn description(&self) -> &'static str {
-        match self {
-            MountPreset::Ssd => "Internal/Fixed SSD - High performance with TRIM and preallocation",
-            MountPreset::Portable => {
-                "Hot-swappable SD Card/USB - On-demand mount with auto-unmount"
-            }
-            MountPreset::Custom(_) => "Custom mount options",
-        }
-    }
+/// Device connection scenario.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum DeviceType {
+    /// Internal or permanently connected devices.
+    #[default]
+    Fixed,
+    /// Hot-swappable devices (SD cards, portable drives).
+    Removable,
 }
 
-/// Configuration for mount operations.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Configuration for mount option generation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PresetConfig {
-    /// User ID for file ownership.
-    pub uid: u32,
-    /// Group ID for file ownership.
-    pub gid: u32,
-    /// Mount preset to use.
-    pub preset: MountPreset,
-}
-
-impl Default for PresetConfig {
-    fn default() -> Self {
-        Self {
-            uid: DEFAULT_UID,
-            gid: DEFAULT_GID,
-            preset: MountPreset::default(),
-        }
-    }
+    pub filesystem: SupportedFilesystem,
+    pub media_type: MediaType,
+    pub device_type: DeviceType,
+    pub custom_options: Option<String>,
 }
 
 impl PresetConfig {
-    /// Creates a new preset configuration with default UID/GID.
-    pub fn new(preset: MountPreset) -> Self {
+    /// Creates a new configuration with defaults.
+    pub fn new(filesystem: SupportedFilesystem) -> Self {
         Self {
-            uid: DEFAULT_UID,
-            gid: DEFAULT_GID,
-            preset,
+            filesystem,
+            media_type: MediaType::default(),
+            device_type: DeviceType::default(),
+            custom_options: None,
         }
     }
 
-    /// Creates a preset configuration with custom UID/GID.
-    pub fn with_ids(preset: MountPreset, uid: u32, gid: u32) -> Self {
-        Self { uid, gid, preset }
+    /// Generates the mount options string.
+    pub fn generate_options(&self, uid: u32, gid: u32) -> String {
+        let mut opts = Vec::new();
+
+        // 1. General Configuration
+        opts.push(format!("uid={},gid={}", uid, gid));
+        opts.push(BASE_OPTIONS.to_string());
+
+        // 2. Filesystem Specifics
+        if self.filesystem == SupportedFilesystem::Ntfs {
+            opts.push("prealloc".to_string());
+        }
+
+        // 3. Media Specifics
+        if self.media_type == MediaType::Flash {
+            opts.push("discard".to_string());
+        }
+
+        // 4. Device Type Specifics
+        match self.device_type {
+            DeviceType::Fixed => {
+                opts.push("x-systemd.device-timeout=3s".to_string());
+            }
+            DeviceType::Removable => {
+                opts.push("noauto".to_string());
+                opts.push("x-systemd.automount".to_string());
+                opts.push("x-systemd.idle-timeout=60s".to_string());
+            }
+        }
+
+        // 5. Custom Options
+        match &self.custom_options {
+            Some(custom) if !custom.is_empty() => {
+                opts.push(custom.clone());
+            }
+            _ => {}
+        }
+
+        opts.join(",")
+    }
+}
+
+// For backward compatibility / ease of use during transition
+pub type MountPreset = PresetConfig;
+
+impl MountPreset {
+    /// Preset for Internal/Fixed SSDs (High Performance).
+    pub fn ssd_defaults(fs: SupportedFilesystem) -> Self {
+        Self {
+            filesystem: fs,
+            media_type: MediaType::Flash,
+            device_type: DeviceType::Fixed,
+            custom_options: None,
+        }
     }
 
-    /// Generates mount options for the given filesystem type.
-    pub fn generate_options(&self, fstype: &str) -> String {
-        self.preset.to_options(fstype, self.uid, self.gid)
+    /// Preset for Portable Devices (Hot-swappable).
+    pub fn portable_defaults(fs: SupportedFilesystem) -> Self {
+        Self {
+            filesystem: fs,
+            media_type: MediaType::Flash, // Assume portable are mostly flash
+            device_type: DeviceType::Removable,
+            custom_options: None,
+        }
+    }
+
+    /// Creates a custom preset.
+    pub fn custom(fs: SupportedFilesystem, options: &str) -> Self {
+        Self {
+            filesystem: fs,
+            media_type: MediaType::default(),
+            device_type: DeviceType::default(),
+            custom_options: Some(options.to_string()),
+        }
     }
 }
 
@@ -144,67 +168,73 @@ mod tests {
 
     #[test]
     fn test_ssd_preset_ntfs() {
-        let preset = MountPreset::Ssd;
-        let options = preset.to_options("ntfs", 1000, 1000);
+        let preset = PresetConfig::new(SupportedFilesystem::Ntfs); // Default is Flash/Fixed
+        let options = preset.generate_options(1000, 1000);
 
-        assert!(options.contains("uid=1000"));
-        assert!(options.contains("gid=1000"));
-        assert!(options.contains("umask=000"));
-        assert!(options.contains("nofail"));
-        assert!(options.contains("rw"));
-        assert!(options.contains("noatime"));
-        assert!(options.contains("discard"));
-        assert!(options.contains("prealloc"));
-        assert!(options.contains("x-systemd.device-timeout=3s"));
+        assert!(options.contains("uid=1000,gid=1000"));
+        assert!(options.contains("rw,noatime"));
+        assert!(options.contains("discard")); // Flash
+        assert!(options.contains("prealloc")); // NTFS
+        assert!(options.contains("x-systemd.device-timeout=3s")); // Fixed
+        assert!(!options.contains("noauto"));
     }
 
     #[test]
     fn test_ssd_preset_exfat() {
-        let preset = MountPreset::Ssd;
-        let options = preset.to_options("exfat", 1000, 1000);
+        let preset = PresetConfig::new(SupportedFilesystem::Exfat);
+        let options = preset.generate_options(1000, 1000);
 
-        // exFAT should not have prealloc
-        assert!(!options.contains("prealloc"));
         assert!(options.contains("discard"));
+        assert!(!options.contains("prealloc")); // Not for exFAT
     }
 
     #[test]
     fn test_portable_preset() {
-        let preset = MountPreset::Portable;
-        let options = preset.to_options("ntfs", 1000, 1000);
+        let preset = PresetConfig {
+            filesystem: SupportedFilesystem::Exfat,
+            media_type: MediaType::Flash,
+            device_type: DeviceType::Removable,
+            custom_options: None,
+        };
+        let options = preset.generate_options(1000, 1000);
 
         assert!(options.contains("noauto"));
         assert!(options.contains("x-systemd.automount"));
         assert!(options.contains("x-systemd.idle-timeout=60s"));
-        // Portable should NOT have discard or prealloc
-        assert!(!options.contains("discard"));
         assert!(!options.contains("prealloc"));
     }
 
     #[test]
     fn test_custom_preset() {
-        let preset = MountPreset::Custom("rw,sync".to_string());
-        let options = preset.to_options("ntfs", 1000, 1000);
+        let preset = PresetConfig::custom(SupportedFilesystem::Ntfs, "rw,sync");
+        let options = preset.generate_options(1000, 1000);
 
         assert!(options.contains("uid=1000"));
         assert!(options.contains("rw,sync"));
     }
 
     #[test]
-    fn test_preset_config_generate_options() {
-        let config = PresetConfig::new(MountPreset::Ssd);
-        let options = config.generate_options("ntfs");
-
-        assert!(options.contains("uid=1000"));
-        assert!(options.contains("gid=1000"));
-    }
-
-    #[test]
-    fn test_preset_config_custom_ids() {
-        let config = PresetConfig::with_ids(MountPreset::Ssd, 1001, 1002);
-        let options = config.generate_options("ntfs");
+    fn test_custom_ids() {
+        let preset = PresetConfig::new(SupportedFilesystem::Ntfs);
+        let options = preset.generate_options(1001, 1002);
 
         assert!(options.contains("uid=1001"));
         assert!(options.contains("gid=1002"));
+    }
+
+    #[test]
+    fn test_rotational_defaults() {
+        // Rotational Drive (HDD)
+        let mut preset = PresetConfig::new(SupportedFilesystem::Exfat);
+        preset.media_type = MediaType::Rotational;
+
+        let options = preset.generate_options(1000, 1000);
+        assert!(!options.contains("discard")); // HDD should not have discard
+    }
+
+    #[test]
+    fn test_driver_selection() {
+        assert_eq!(SupportedFilesystem::Ntfs.driver_name(), "ntfs3");
+        assert_eq!(SupportedFilesystem::Exfat.driver_name(), "exfat");
     }
 }

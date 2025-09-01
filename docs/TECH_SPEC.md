@@ -80,6 +80,10 @@ mkdir -p /home/deck/<mount-point>
 
   - Pre-allocate file space to avoid frequent allocation during write, improving performance, helpful for large Steam games.
 
+- `noatime`:
+
+  - `noatime` is a common mount option, used to disable access time updates, reducing write operations, improving performance, especially suitable for SSDs.
+
 **FAT32 Not Recommended**, because FAT32 does not support large files, and SteamOS game files often exceed 4GB, causing errors.
 
 ## Adding Game Mode "Storage Space"

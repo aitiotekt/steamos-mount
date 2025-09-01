@@ -92,25 +92,45 @@ steamos-mount/
 
 ### 3.3 文件系统参数与预设 (Presets)
 
-工具不应让用户手写参数，而是提供基于场景的预设。
+工具应该首先提供基于根据文件系统、设备介质、使用场景的预设；但高级用户可以手动微调参数，比如开关某个选项、调整参数值等。
 
 #### 通用配置
 
 - `uid=1000,gid=1000`: 强制将所有权映射给 `deck` 用户，解决 NTFS/exFAT 不支持 POSIX 权限导致 Steam 无法写入的问题。
 - `umask=000`: 给予 777 权限，确保 Proton 兼容层无权限阻碍。
 - `nofail`: 挂载失败时不阻塞系统启动。
+- `rw,noatime`: 减少元数据写入。
 
-#### 预设 A：内置/固定 SSD (游戏高性能模式)
+#### 文件系统预设：
 
-- **场景**: NVMe SSD 或长期连接的 SSD 移动硬盘。
+文件系统：ntfs
+
+- `ntfs3`: 使用内核驱动，高性能。
+- `prealloc`: (仅 NTFS) 预分配空间，减少碎片，优化大型游戏下载。
+
+文件系统：exfat
+
+- `exfat`: 使用 exFAT 驱动
+
+#### 设备介质预设
+
+设备介质：闪存
+
+- `discard`: 开启 TRIM，延长 SSD 寿命。
+
+设备介质：机械硬盘
+
+暂无额外
+
+#### 固定/可拔插设备类型预设：
+
+设备类型：固定设备
+
+- **场景**: 内置设备或长期连接的设备。
 - **参数**:
-  - `ntfs3`: 使用内核驱动，高性能。
-  - `rw,noatime`: 减少元数据写入。
-  - `discard`: 开启 TRIM，延长 SSD 寿命。
-  - `prealloc`: (仅 NTFS) 预分配空间，减少碎片，优化大型游戏下载。
   - `x-systemd.device-timeout=3s`: 快速跳过不存在的设备。
 
-#### 预设 B：可热插拔 SD 卡/U 盘 (便携模式)
+设备类型：可拔插设备
 
 - **场景**: 需要频繁插拔的设备。
 - **参数**:
@@ -146,10 +166,10 @@ steamos-mount/
 
 # ... 系统原有配置 ...
 
-# BEGIN STEAMOS-AUTO-MOUNT-MANAGED
-# Created by SteamOS Auto-Mount Tool. DO NOT EDIT THIS BLOCK MANUALLY.
+# BEGIN STEAMOS-MOUNT-MANAGED
+# Created by SteamOS Mount Tool. DO NOT EDIT THIS BLOCK MANUALLY.
 UUID=1234-5678  /home/deck/Drives/GamesSSD  ntfs3  uid=1000,gid=1000,rw,umask=000,discard,prealloc,nofail  0  0
-# END STEAMOS-AUTO-MOUNT-MANAGED
+# END STEAMOS-MOUNT-MANAGED
 ```
 
 - **FSCK 选项**: 设置为 `0 0`。Linux 下对 NTFS 的 fsck 支持极差，开启检查会导致启动卡死（dependency failed）。

@@ -11,14 +11,14 @@ use std::path::{Path, PathBuf};
 use crate::error::{IoResultExt, Result};
 
 /// Marker for the beginning of the managed block in fstab.
-pub const MANAGED_BLOCK_BEGIN: &str = "# BEGIN STEAMOS-AUTO-MOUNT-MANAGED";
+pub const MANAGED_BLOCK_BEGIN: &str = "# BEGIN STEAMOS-MOUNT-MANAGED";
 
 /// Marker for the end of the managed block in fstab.
-pub const MANAGED_BLOCK_END: &str = "# END STEAMOS-AUTO-MOUNT-MANAGED";
+pub const MANAGED_BLOCK_END: &str = "# END STEAMOS-MOUNT-MANAGED";
 
 /// Description comment for the managed block.
 const MANAGED_BLOCK_COMMENT: &str =
-    "# Created by SteamOS Auto-Mount Tool. DO NOT EDIT THIS BLOCK MANUALLY.";
+    "# Created by SteamOS Mount Tool. DO NOT EDIT THIS BLOCK MANUALLY.";
 
 /// Default fstab path.
 pub const FSTAB_PATH: &str = "/etc/fstab";
@@ -306,10 +306,10 @@ mod tests {
 UUID=abc-123  /  ext4  defaults  0  1
 UUID=def-456  /boot/efi  vfat  umask=0077  0  1
 
-# BEGIN STEAMOS-AUTO-MOUNT-MANAGED
-# Created by SteamOS Auto-Mount Tool. DO NOT EDIT THIS BLOCK MANUALLY.
+# BEGIN STEAMOS-MOUNT-MANAGED
+# Created by SteamOS Mount Tool. DO NOT EDIT THIS BLOCK MANUALLY.
 UUID=1234-5678  /home/deck/Drives/GamesSSD  ntfs3  uid=1000,gid=1000,rw,umask=000,discard,prealloc,nofail  0  0
-# END STEAMOS-AUTO-MOUNT-MANAGED
+# END STEAMOS-MOUNT-MANAGED
 
 # Custom user entries
 UUID=custom  /mnt/custom  ext4  defaults  0  0

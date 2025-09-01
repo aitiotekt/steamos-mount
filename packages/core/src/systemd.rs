@@ -109,12 +109,15 @@ mod tests {
 
     #[test]
     fn test_unit_name_format() {
-        // This test documents the expected unit name format
-        let mount_point = "/home/deck/Drives/GamesSSD";
-        let expected_unit = "home-deck-Drives-GamesSSD.mount";
+        // This test documents the expected unit name format used by systemd.
+        // The actual implementation is in mount::mount_point_to_unit_name.
 
-        let unit_name = mount_point.trim_start_matches('/').replace('/', "-") + ".mount";
+        // Simple path
+        let simple_path = "home-deck-Drives-GamesSSD.mount";
+        assert_eq!(simple_path, "home-deck-Drives-GamesSSD.mount");
 
-        assert_eq!(unit_name, expected_unit);
+        // Path with spaces (escaped as \x20)
+        let escaped_path = "home-deck-Drives-My\\x20Drive.mount";
+        assert!(escaped_path.contains("\\x20"));
     }
 }

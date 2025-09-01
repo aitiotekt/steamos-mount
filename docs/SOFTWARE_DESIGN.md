@@ -92,25 +92,45 @@ steamos-mount/
 
 ### 3.3 Filesystem Parameters & Presets
 
-The tool should not ask users to write parameters manually, but provide scenario-based presets.
+The tool should primarily provide presets based on filesystem, storage media, and usage scenario; however, advanced users can manually fine-tune parameters, such as toggling specific options or adjusting values.
 
 #### General Configuration
 
 - `uid=1000,gid=1000`: Force mapping ownership to `deck` user, solving issue where NTFS/exFAT lack POSIX permissions preventing Steam from writing.
 - `umask=000`: Grant 777 permissions to ensure Proton compatibility layer has no permission blockers.
 - `nofail`: Do not block system boot if mount fails.
+- `rw,noatime`: Reduce metadata writes.
 
-#### Preset A: Internal/Fixed SSD (Game High Performance Mode)
+#### Filesystem Presets
 
-- **Scenario**: NVMe SSD or permanently connected SSD external drive.
+**Filesystem: ntfs**
+
+- `ntfs3`: Use kernel driver, high performance.
+- `prealloc`: (NTFS only) Pre-allocate space, reduce fragmentation, optimize large game downloads.
+
+**Filesystem: exfat**
+
+- `exfat`: Use exFAT driver.
+
+#### Storage Media Presets
+
+**Media: Flash**
+
+- `discard`: Enable TRIM, extend SSD/Flash life.
+
+**Media: Rotational (HDD)**
+
+No extra options currently.
+
+#### Device Type Presets
+
+**Type: Fixed Device**
+
+- **Scenario**: Internal devices or permanently connected external drives.
 - **Parameters**:
-  - `ntfs3`: Use kernel driver, high performance.
-  - `rw,noatime`: Reduce metadata writes.
-  - `discard`: Enable TRIM, extend SSD life.
-  - `prealloc`: (NTFS only) Pre-allocate space, reduce fragmentation, optimize large game downloads.
   - `x-systemd.device-timeout=3s`: Quickly skip non-existent devices.
 
-#### Preset B: Hot-swappable SD Card/USB Drive (Portable Mode)
+**Type: Removable Device**
 
 - **Scenario**: Devices requiring frequent plugging/unplugging.
 - **Parameters**:
@@ -146,10 +166,10 @@ Entries managed by the tool must contain special comment markers for program ide
 
 # ... System original config ...
 
-# BEGIN STEAMOS-AUTO-MOUNT-MANAGED
-# Created by SteamOS Auto-Mount Tool. DO NOT EDIT THIS BLOCK MANUALLY.
+# BEGIN STEAMOS-MOUNT-MANAGED
+# Created by SteamOS Mount Tool. DO NOT EDIT THIS BLOCK MANUALLY.
 UUID=1234-5678  /home/deck/Drives/GamesSSD  ntfs3  uid=1000,gid=1000,rw,umask=000,discard,prealloc,nofail  0  0
-# END STEAMOS-AUTO-MOUNT-MANAGED
+# END STEAMOS-MOUNT-MANAGED
 ```
 
 - **FSCK Option**: Set to `0 0`. Linux support for NTFS fsck is poor; enabling checks causes boot hang (dependency failed).
