@@ -72,6 +72,10 @@ pub enum Error {
     #[snafu(display("Invalid filesystem type: {fs}"))]
     InvalidFilesystem { fs: String },
 
+    /// Home directory not found.
+    #[snafu(display("Could not determine home directory"))]
+    HomeDirNotFound,
+
     /// Unmount operation failed.
     #[snafu(display("Failed to unmount {}: {message}", path.display()))]
     Unmount { path: PathBuf, message: String },
@@ -106,10 +110,6 @@ pub enum Error {
     /// Systemd operation failed.
     #[snafu(display("systemd operation failed: {message}"))]
     Systemd { message: String },
-
-    /// Home directory not found.
-    #[snafu(display("home directory not found"))]
-    HomeDirNotFound,
 
     /// Invalid UUID format.
     #[snafu(display("invalid UUID format: {uuid}"))]

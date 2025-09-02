@@ -282,16 +282,24 @@ pub fn write_managed_entries(path: &Path, entries: &[FstabEntry]) -> Result<()> 
     Ok(())
 }
 
-/// Returns the default mount base path for SteamOS.
+/// Returns the default mount base path.
 ///
-/// Mounts are placed under `/home/deck/Drives/` to survive system updates.
-pub fn default_mount_base() -> PathBuf {
-    PathBuf::from("/home/deck/Drives")
+/// Uses the current user's home directory to support SteamOS-like systems
+/// (ChimeraOS, Bazzite, HoloISO, etc.) where the username may not be "deck".
+///
+/// # Errors
+/// Returns an error if the home directory cannot be determined.
+pub fn default_mount_base() -> Result<PathBuf> {
+    let home = dirs::home_dir().ok_or(crate::error::Error::HomeDirNotFound)?;
+    Ok(home.join("Drives"))
 }
 
 /// Generates a mount point path for a device.
-pub fn generate_mount_point(mount_name: &str) -> PathBuf {
-    default_mount_base().join(mount_name)
+///
+/// # Errors
+/// Returns an error if the home directory cannot be determined.
+pub fn generate_mount_point(mount_name: &str) -> Result<PathBuf> {
+    Ok(default_mount_base()?.join(mount_name))
 }
 
 #[cfg(test)]
@@ -402,8 +410,12 @@ UUID=custom  /mnt/custom  ext4  defaults  0  0
 
     #[test]
     fn test_generate_mount_point() {
-        let mount_point = generate_mount_point("GamesSSD");
-        assert_eq!(mount_point, PathBuf::from("/home/deck/Drives/GamesSSD"));
+        let mount_point = generate_mount_point("GamesSSD").unwrap();
+        let expected = dirs::home_dir()
+            .expect("Home directory should exist in test environment")
+            .join("Drives")
+            .join("GamesSSD");
+        assert_eq!(mount_point, expected);
     }
 
     #[test]

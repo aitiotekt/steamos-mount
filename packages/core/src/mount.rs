@@ -129,110 +129,26 @@ pub fn repair_dirty_volume(device: &BlockDevice) -> Result<()> {
 
 /// Reloads systemd daemon to pick up fstab changes.
 pub fn reload_systemd_daemon() -> Result<()> {
-    let output = Command::new("systemctl")
-        .arg("daemon-reload")
-        .output()
-        .command_context("systemctl daemon-reload")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        return Err(Error::Systemd { message: stderr });
-    }
-
-    Ok(())
+    crate::syscall::daemon_reload()
 }
 
 /// Starts a systemd mount unit for a mount point.
 ///
 /// The unit name is derived from the mount point path.
 pub fn start_mount_unit(mount_point: &Path) -> Result<()> {
-    let unit_name = mount_point_to_unit_name(mount_point);
-
-    let output = Command::new("systemctl")
-        .args(["start", &unit_name])
-        .output()
-        .command_context(format!("systemctl start {}", unit_name))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        return Err(Error::Systemd { message: stderr });
-    }
-
-    Ok(())
+    let unit_name = crate::syscall::mount_point_to_unit_name(mount_point);
+    crate::syscall::start_unit(&unit_name)
 }
 
 /// Stops a systemd mount unit for a mount point.
 pub fn stop_mount_unit(mount_point: &Path) -> Result<()> {
-    let unit_name = mount_point_to_unit_name(mount_point);
-
-    let output = Command::new("systemctl")
-        .args(["stop", &unit_name])
-        .output()
-        .command_context(format!("systemctl stop {}", unit_name))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        return Err(Error::Systemd { message: stderr });
-    }
-
-    Ok(())
-}
-
-/// Converts a mount point path to a systemd unit name.
-///
-/// Implements systemd path escaping logic:
-/// 1. Removes leading slashes
-/// 2. Replaces slashes with dashes
-/// 3. Escapes other special characters (like spaces and dashes) as \xNN
-///
-/// Example: "/home/deck/Drives/GamesSSD" -> "home-deck-Drives-GamesSSD.mount"
-/// Example: "/home/deck/Drives/My Drive" -> "home-deck-Drives-My\x20Drive.mount"
-fn mount_point_to_unit_name(mount_point: &Path) -> String {
-    let path_str = mount_point.to_string_lossy();
-    let trimmed = path_str.trim_start_matches('/');
-
-    if trimmed.is_empty() {
-        return "-.mount".to_string();
-    }
-
-    let mut escaped = String::with_capacity(trimmed.len());
-    for c in trimmed.chars() {
-        if c == '/' {
-            escaped.push('-');
-        } else if c.is_ascii_alphanumeric() || c == ':' || c == '_' || c == '.' {
-            escaped.push(c);
-        } else {
-            escaped.push_str(&format!("\\x{:02x}", c as u32));
-        }
-    }
-
-    format!("{}.mount", escaped)
+    let unit_name = crate::syscall::mount_point_to_unit_name(mount_point);
+    crate::syscall::stop_unit(&unit_name)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_mount_point_to_unit_name() {
-        assert_eq!(
-            mount_point_to_unit_name(Path::new("/home/deck/Drives/GamesSSD")),
-            "home-deck-Drives-GamesSSD.mount"
-        );
-        assert_eq!(
-            mount_point_to_unit_name(Path::new("/mnt/test")),
-            "mnt-test.mount"
-        );
-    }
-
-    #[test]
-    fn test_mount_point_to_unit_name_escaped() {
-        // "My Drive" -> "My\x20Drive"
-        assert_eq!(
-            mount_point_to_unit_name(Path::new("/home/deck/Drives/My Drive")),
-            "home-deck-Drives-My\\x20Drive.mount"
-        );
-    }
 
     #[test]
     fn test_is_dirty_volume_error() {

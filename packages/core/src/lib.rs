@@ -16,7 +16,7 @@
 //! # Example
 //!
 //! ```no_run
-//! use steamos_mount_core::{disk, preset, fstab, mount, steam, systemd};
+//! use steamos_mount_core::{disk, preset, fstab, mount, steam, syscall};
 //!
 //! // Scan for available devices
 //! let devices = disk::list_block_devices().unwrap();
@@ -31,7 +31,7 @@
 //!
 //!     // Create fstab entry
 //!     let mount_name = device.suggested_mount_name();
-//!     let mount_point = fstab::generate_mount_point(&mount_name);
+//!     let mount_point = fstab::generate_mount_point(&mount_name).unwrap();
 //!     let entry = fstab::FstabEntry::new(
 //!         device.fstab_spec().unwrap(),
 //!         &mount_point,
@@ -51,7 +51,7 @@ pub mod fstab;
 pub mod mount;
 pub mod preset;
 pub mod steam;
-pub mod systemd;
+pub mod syscall;
 
 // Re-export commonly used types
 pub use disk::BlockDevice;

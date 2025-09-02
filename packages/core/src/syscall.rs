@@ -102,22 +102,60 @@ fn run_systemctl(args: &[&str]) -> Result<()> {
     Ok(())
 }
 
+/// Converts a mount point path to a systemd unit name.
+///
+/// Implements systemd path escaping logic:
+/// 1. Removes leading slashes
+/// 2. Replaces slashes with dashes
+/// 3. Escapes other special characters (like spaces and dashes) as \xNN
+///
+/// Example: "/home/deck/Drives/GamesSSD" -> "home-deck-Drives-GamesSSD.mount"
+/// Example: "/home/deck/Drives/My Drive" -> "home-deck-Drives-My\x20Drive.mount"
+pub fn mount_point_to_unit_name(mount_point: &std::path::Path) -> String {
+    let path_str = mount_point.to_string_lossy();
+    let trimmed = path_str.trim_start_matches('/');
+
+    if trimmed.is_empty() {
+        return "-.mount".to_string();
+    }
+
+    let mut escaped = String::with_capacity(trimmed.len());
+    for c in trimmed.chars() {
+        if c == '/' {
+            escaped.push('-');
+        } else if c.is_ascii_alphanumeric() || c == ':' || c == '_' || c == '.' {
+            escaped.push(c);
+        } else {
+            escaped.push_str(&format!("\\x{:02x}", c as u32));
+        }
+    }
+
+    format!("{}.mount", escaped)
+}
+
 #[cfg(test)]
 mod tests {
-    // Note: These tests would require systemd which may not be available
-    // in all test environments. They are here for documentation purposes.
+    use super::*;
+    use std::path::Path;
 
     #[test]
-    fn test_unit_name_format() {
-        // This test documents the expected unit name format used by systemd.
-        // The actual implementation is in mount::mount_point_to_unit_name.
+    fn test_mount_point_to_unit_name() {
+        assert_eq!(
+            mount_point_to_unit_name(Path::new("/home/deck/Drives/GamesSSD")),
+            "home-deck-Drives-GamesSSD.mount"
+        );
+        assert_eq!(
+            mount_point_to_unit_name(Path::new("/mnt/test")),
+            "mnt-test.mount"
+        );
+    }
 
-        // Simple path
-        let simple_path = "home-deck-Drives-GamesSSD.mount";
-        assert_eq!(simple_path, "home-deck-Drives-GamesSSD.mount");
-
-        // Path with spaces (escaped as \x20)
-        let escaped_path = "home-deck-Drives-My\\x20Drive.mount";
-        assert!(escaped_path.contains("\\x20"));
+    #[test]
+    fn test_mount_point_to_unit_name_escaped() {
+        // "My Drive" -> "My\x20Drive"
+        assert_eq!(
+            mount_point_to_unit_name(Path::new("/home/deck/Drives/My Drive")),
+            "home-deck-Drives-My\\x20Drive.mount"
+        );
     }
 }

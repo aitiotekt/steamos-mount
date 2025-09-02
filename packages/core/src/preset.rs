@@ -7,11 +7,24 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Default user ID for the deck user on SteamOS.
+/// Default user ID (first regular user on most Linux systems).
 pub const DEFAULT_UID: u32 = 1000;
 
-/// Default group ID for the deck user on SteamOS.
+/// Default group ID (first regular user's group on most Linux systems).
 pub const DEFAULT_GID: u32 = 1000;
+
+/// Returns the current user's UID.
+///
+/// This supports SteamOS-like systems (ChimeraOS, Bazzite, HoloISO, etc.)
+/// where the primary user may not have UID 1000.
+pub fn current_uid() -> u32 {
+    nix::unistd::getuid().as_raw()
+}
+
+/// Returns the current user's primary GID.
+pub fn current_gid() -> u32 {
+    nix::unistd::getgid().as_raw()
+}
 
 /// Default options applied to all mounts.
 pub const BASE_OPTIONS: &str = "umask=000,nofail,rw,noatime";
