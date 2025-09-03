@@ -17,6 +17,10 @@
 - **Comments**: Write clear, English comments explaining *why*, not just *what*.
 - **Documentation**: Update `README.md` or `docs/` in English when logic changes.
 
+### Nodejs
+
+- Don't use `npm install` to install dependencies, use `pnpm install` instead.
+
 ### Bash
 
 - Use `set -e` for error handling.

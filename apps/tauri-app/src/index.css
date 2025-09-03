@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+@theme {
+  /* Border radius */
+  --radius-lg: 0.5rem;
+  --radius-md: calc(0.5rem - 2px);
+  --radius-sm: calc(0.5rem - 4px);
+
+  /* Light mode colors */
+  --color-background: oklch(100% 0 0);
+  --color-foreground: oklch(14.9% 0.046 257.2);
+  --color-card: oklch(100% 0 0);
+  --color-card-foreground: oklch(14.9% 0.046 257.2);
+  --color-popover: oklch(100% 0 0);
+  --color-popover-foreground: oklch(14.9% 0.046 257.2);
+  --color-primary: oklch(20.5% 0.033 256.8);
+  --color-primary-foreground: oklch(98.4% 0.003 247.9);
+  --color-secondary: oklch(96.5% 0.007 247.9);
+  --color-secondary-foreground: oklch(20.5% 0.033 256.8);
+  --color-muted: oklch(96.5% 0.007 247.9);
+  --color-muted-foreground: oklch(55.6% 0.022 257.6);
+  --color-accent: oklch(96.5% 0.007 247.9);
+  --color-accent-foreground: oklch(20.5% 0.033 256.8);
+  --color-destructive: oklch(57.7% 0.215 27.3);
+  --color-destructive-foreground: oklch(98.4% 0.003 247.9);
+  --color-border: oklch(91.4% 0.012 254.1);
+  --color-input: oklch(91.4% 0.012 254.1);
+  --color-ring: oklch(14.9% 0.046 257.2);
+  
+  /* Success/Warning for badges */
+  --color-success: oklch(62% 0.19 145);
+  --color-success-foreground: oklch(100% 0 0);
+  --color-warning: oklch(75% 0.15 85);
+  --color-warning-foreground: oklch(20% 0.02 85);
+}
+
+/* Dark mode overrides */
+.dark {
+  --color-background: oklch(14.9% 0.046 257.2);
+  --color-foreground: oklch(98.4% 0.003 247.9);
+  --color-card: oklch(14.9% 0.046 257.2);
+  --color-card-foreground: oklch(98.4% 0.003 247.9);
+  --color-popover: oklch(14.9% 0.046 257.2);
+  --color-popover-foreground: oklch(98.4% 0.003 247.9);
+  --color-primary: oklch(98.4% 0.003 247.9);
+  --color-primary-foreground: oklch(20.5% 0.033 256.8);
+  --color-secondary: oklch(27.1% 0.027 259.2);
+  --color-secondary-foreground: oklch(98.4% 0.003 247.9);
+  --color-muted: oklch(27.1% 0.027 259.2);
+  --color-muted-foreground: oklch(71.9% 0.018 254.1);
+  --color-accent: oklch(27.1% 0.027 259.2);
+  --color-accent-foreground: oklch(98.4% 0.003 247.9);
+  --color-destructive: oklch(42.2% 0.14 29);
+  --color-destructive-foreground: oklch(98.4% 0.003 247.9);
+  --color-border: oklch(27.1% 0.027 259.2);
+  --color-input: oklch(27.1% 0.027 259.2);
+  --color-ring: oklch(84.5% 0.015 254.1);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+/* Container utility */
+.container {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+@media (min-width: 640px) {
+  .container {
+    max-width: 640px;
+  }
+}
+
+@media (min-width: 768px) {
+  .container {
+    max-width: 768px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container {
+    max-width: 1024px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .container {
+    max-width: 1280px;
+  }
+}

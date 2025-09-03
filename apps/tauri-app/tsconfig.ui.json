@@ -1,9 +1,0 @@
-{
-    "extends": "../../tsconfig.reactbase.json",
-    "compilerOptions": {
-        "baseUrl": "."
-    },
-    "include": [
-        "src"
-    ]
-}

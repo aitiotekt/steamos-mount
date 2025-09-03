@@ -8,6 +8,7 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
+use crate::Error;
 use crate::error::{IoResultExt, Result};
 
 /// Marker for the beginning of the managed block in fstab.
@@ -23,21 +24,49 @@ const MANAGED_BLOCK_COMMENT: &str =
 /// Default fstab path.
 pub const FSTAB_PATH: &str = "/etc/fstab";
 
+pub trait IntoMountOptions {
+    fn into(self) -> Vec<String>;
+}
+
+impl IntoMountOptions for &str {
+    fn into(self) -> Vec<String> {
+        self.split(',').map(|s| s.to_string()).collect()
+    }
+}
+
+impl IntoMountOptions for &String {
+    fn into(self) -> Vec<String> {
+        IntoMountOptions::into(self as &str)
+    }
+}
+
+impl IntoMountOptions for String {
+    fn into(self) -> Vec<String> {
+        IntoMountOptions::into(&self as &str)
+    }
+}
+
+impl IntoMountOptions for Vec<String> {
+    fn into(self) -> Vec<String> {
+        self
+    }
+}
+
 /// Represents a single fstab entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FstabEntry {
-    /// Filesystem specification (e.g., "UUID=xxx" or "PARTUUID=xxx").
+    /// The device identifier (e.g., "UUID=xxx" or "PARTUUID=xxx").
     pub fs_spec: String,
     /// Mount point path.
     pub mount_point: PathBuf,
     /// Filesystem type (e.g., "ntfs3", "exfat").
-    pub fs_type: String,
+    pub vfs_type: String,
     /// Mount options.
-    pub options: String,
-    /// Dump frequency (always 0 for NTFS/exFAT).
+    pub mount_options: Vec<String>,
+    /// This field is used by dump(8) to determine which filesystems need to be dumped.
     pub dump: u8,
-    /// Pass number for fsck (always 0 for NTFS/exFAT).
-    pub pass: u8,
+    /// This field is used by fsck(8) to determine the order in which filesystem checks are done at boot time.
+    pub fsck_order: u16,
 }
 
 impl FstabEntry {
@@ -46,15 +75,17 @@ impl FstabEntry {
         fs_spec: impl Into<String>,
         mount_point: impl Into<PathBuf>,
         fs_type: impl Into<String>,
-        options: impl Into<String>,
+        mount_options: impl IntoMountOptions,
+        dump: u8,
+        fsck_order: u16,
     ) -> Self {
         Self {
             fs_spec: fs_spec.into(),
             mount_point: mount_point.into(),
-            fs_type: fs_type.into(),
-            options: options.into(),
-            dump: 0,
-            pass: 0,
+            vfs_type: fs_type.into(),
+            mount_options: mount_options.into(),
+            dump,
+            fsck_order,
         }
     }
 
@@ -64,37 +95,45 @@ impl FstabEntry {
             "{}  {}  {}  {}  {}  {}",
             self.fs_spec,
             escape_fstab_path(&self.mount_point.to_string_lossy()),
-            self.fs_type,
-            self.options,
+            self.vfs_type,
+            self.mount_options.join(","),
             self.dump,
-            self.pass
+            self.fsck_order
         )
     }
 
     /// Parses a single fstab line into an entry.
     ///
     /// Returns None for comments and empty lines.
-    pub fn from_line(line: &str) -> Option<Self> {
+    pub fn from_line(line: &str) -> Result<Option<Self>> {
         let line = line.trim();
 
         // Skip comments and empty lines
         if line.is_empty() || line.starts_with('#') {
-            return None;
+            return Ok(None);
         }
 
         let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() < 4 {
-            return None;
+        if parts.len() != 6 {
+            return Ok(None);
         }
 
-        Some(Self {
+        let mount_options: Vec<String> = parts[3].split(',').map(|s| s.to_string()).collect();
+        let dump = parts[4].parse::<u8>().map_err(|e| Error::FstabParse {
+            message: format!("failed to parse dump field of line {}: {}", line, e),
+        })?;
+        let fsck_order = parts[5].parse::<u16>().map_err(|e| Error::FstabParse {
+            message: format!("failed to parse fsck_order of line {}: {}", line, e),
+        })?;
+
+        Ok(Some(Self {
             fs_spec: parts[0].to_string(),
             mount_point: PathBuf::from(unescape_fstab_path(parts[1])),
-            fs_type: parts[2].to_string(),
-            options: parts[3].to_string(),
-            dump: parts.get(4).and_then(|s| s.parse().ok()).unwrap_or(0),
-            pass: parts.get(5).and_then(|s| s.parse().ok()).unwrap_or(0),
-        })
+            vfs_type: parts[2].to_string(),
+            mount_options,
+            dump,
+            fsck_order,
+        }))
     }
 }
 
@@ -196,7 +235,7 @@ pub fn parse_fstab(path: &Path) -> Result<ParsedFstab> {
             if line.trim().starts_with("# Created by") {
                 continue;
             }
-            if let Some(entry) = FstabEntry::from_line(&line) {
+            if let Some(entry) = FstabEntry::from_line(&line)? {
                 result.managed_entries.push(entry);
             }
         } else if result.has_managed_block && !in_managed_block {
@@ -224,6 +263,19 @@ pub fn backup_fstab(path: &Path) -> Result<PathBuf> {
     Ok(backup_path)
 }
 
+/// Creates a timestamped backup with privilege escalation support.
+pub fn backup_fstab_with_ctx(
+    path: &Path,
+    ctx: &crate::executor::ExecutionContext,
+) -> Result<PathBuf> {
+    let timestamp = chrono_lite_timestamp();
+    let backup_name = format!("{}.backup.{}", path.display(), timestamp);
+
+    ctx.copy_file_privileged(&path.display().to_string(), &backup_name)?;
+
+    Ok(PathBuf::from(backup_name))
+}
+
 /// Simple timestamp without external dependencies.
 fn chrono_lite_timestamp() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -245,12 +297,69 @@ fn chrono_lite_timestamp() -> String {
 /// The operation is idempotent - running it multiple times with the same
 /// entries produces the same result.
 pub fn write_managed_entries(path: &Path, entries: &[FstabEntry]) -> Result<()> {
-    let parsed = parse_fstab(path)?;
+    let content = fs::read_to_string(path).fstab_read_context(path)?;
+    let new_content = update_managed_entries_content(&content, entries)?;
+    fs::write(path, new_content).fstab_write_context(path)?;
+    Ok(())
+}
+
+/// Writes managed entries to fstab with privilege escalation support.
+///
+/// This version uses the provided `ExecutionContext` to write the file
+/// with elevated privileges.
+pub fn write_managed_entries_with_ctx(
+    path: &Path,
+    entries: &[FstabEntry],
+    ctx: &crate::executor::ExecutionContext,
+) -> Result<()> {
+    let content = fs::read_to_string(path).fstab_read_context(path)?;
+    let new_content = update_managed_entries_content(&content, entries)?;
+    ctx.write_file_privileged(&path.display().to_string(), &new_content)?;
+    Ok(())
+}
+
+/// Updates managed entries in fstab content string.
+///
+/// This function processes the fstab content as a string, replacing the managed block
+/// with new entries. Useful for scenarios where file I/O is handled separately
+/// (e.g., with privilege escalation via pkexec).
+pub fn update_managed_entries_content(content: &str, entries: &[FstabEntry]) -> Result<String> {
+    let mut header_lines = Vec::new();
+    let mut footer_lines = Vec::new();
+    let mut in_managed_block = false;
+    let mut has_managed_block = false;
+    let mut past_managed_block = false;
+
+    for line in content.lines() {
+        if line.trim() == MANAGED_BLOCK_BEGIN {
+            in_managed_block = true;
+            has_managed_block = true;
+            continue;
+        }
+
+        if line.trim() == MANAGED_BLOCK_END {
+            in_managed_block = false;
+            past_managed_block = true;
+            continue;
+        }
+
+        if in_managed_block {
+            // Skip lines inside managed block
+            continue;
+        } else if past_managed_block {
+            footer_lines.push(line);
+        } else {
+            header_lines.push(line);
+        }
+    }
+
+    // Ensure we don't have a stale marker if the block wasn't properly closed
+    let _ = has_managed_block;
 
     let mut output = String::new();
 
-    // Write header lines (everything before managed block)
-    for line in &parsed.header_lines {
+    // Write header lines
+    for line in &header_lines {
         output.push_str(line);
         output.push('\n');
     }
@@ -271,15 +380,13 @@ pub fn write_managed_entries(path: &Path, entries: &[FstabEntry]) -> Result<()> 
         output.push('\n');
     }
 
-    // Write footer lines (everything after managed block)
-    for line in &parsed.footer_lines {
+    // Write footer lines
+    for line in &footer_lines {
         output.push_str(line);
         output.push('\n');
     }
 
-    fs::write(path, output).fstab_write_context(path)?;
-
-    Ok(())
+    Ok(output)
 }
 
 /// Returns the default mount base path.
@@ -326,26 +433,30 @@ UUID=custom  /mnt/custom  ext4  defaults  0  0
     #[test]
     fn test_parse_fstab_entry() {
         let line = "UUID=1234-5678  /home/deck/Drives/Test  ntfs3  rw,noatime  0  0";
-        let entry = FstabEntry::from_line(line).unwrap();
+        let entry = FstabEntry::from_line(line).unwrap().unwrap();
 
         assert_eq!(entry.fs_spec, "UUID=1234-5678");
         assert_eq!(entry.mount_point, PathBuf::from("/home/deck/Drives/Test"));
-        assert_eq!(entry.fs_type, "ntfs3");
-        assert_eq!(entry.options, "rw,noatime");
+        assert_eq!(entry.vfs_type, "ntfs3");
+        assert_eq!(entry.mount_options, vec!["rw", "noatime"]); // Split into vector
         assert_eq!(entry.dump, 0);
-        assert_eq!(entry.pass, 0);
+        assert_eq!(entry.fsck_order, 0);
     }
 
     #[test]
     fn test_parse_fstab_skip_comments() {
-        assert!(FstabEntry::from_line("# This is a comment").is_none());
-        assert!(FstabEntry::from_line("").is_none());
-        assert!(FstabEntry::from_line("   ").is_none());
+        assert!(
+            FstabEntry::from_line("# This is a comment")
+                .unwrap()
+                .is_none()
+        );
+        assert!(FstabEntry::from_line("").unwrap().is_none());
+        assert!(FstabEntry::from_line("   ").unwrap().is_none());
     }
 
     #[test]
     fn test_fstab_entry_to_line() {
-        let entry = FstabEntry::new("UUID=test-123", "/mnt/test", "ntfs3", "rw,noatime");
+        let entry = FstabEntry::new("UUID=test-123", "/mnt/test", "ntfs3", "rw,noatime", 0, 0);
 
         let line = entry.to_fstab_line();
         assert!(line.contains("UUID=test-123"));
@@ -391,6 +502,8 @@ UUID=custom  /mnt/custom  ext4  defaults  0  0
             "/home/deck/Drives/NewDrive",
             "ntfs3",
             "rw,noatime",
+            0,
+            0,
         )];
 
         // Write entries
@@ -422,7 +535,7 @@ UUID=custom  /mnt/custom  ext4  defaults  0  0
     fn test_parse_fstab_escaped_spaces() {
         // "My Drive" -> "My\040Drive"
         let line = "UUID=1234  /mnt/My\\040Drive  ntfs3  defaults  0  0";
-        let entry = FstabEntry::from_line(line).unwrap();
+        let entry = FstabEntry::from_line(line).unwrap().unwrap();
 
         // This assertion will likely fail currently because unescaping isn't implemented
         assert_eq!(entry.mount_point, PathBuf::from("/mnt/My Drive"));

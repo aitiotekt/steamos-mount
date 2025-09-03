@@ -30,6 +30,7 @@ dist-ssr/
 build/
 .npm
 .pnpm-store
+**/*.tsbuildinfo
 
 # Python
 __pycache__/

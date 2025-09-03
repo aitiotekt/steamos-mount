@@ -178,36 +178,57 @@ UUID=1234-5678  /home/deck/Drives/GamesSSD  ntfs3  uid=1000,gid=1000,rw,umask=00
 
 ## 5. Steam Game Library Injection
 
-After successful mount, Steam needs to recognize the path.
+After successful mount, Steam needs to recognize the path. The Desktop Mode app provides three execution modes for user choice.
 
-### 5.1 Automated Solution (Recommended)
+### 5.1 Library Path Configuration
 
-Modify Steam's VDF configuration file via script.
+Before injection, users can configure the Steam library path for each mounted drive:
+
+- **Default Path**: `{MOUNT_POINT}/SteamLibrary` (recommended)
+- **Custom Path**: User-specified subdirectory
+
+### 5.2 Execution Modes
+
+#### Mode 1: Automatic Execution (Recommended)
+
+Fully automated VDF modification with Steam state restoration.
 
 - **File Path**: `~/.local/share/Steam/steamapps/libraryfolders.vdf`
-- **Precondition**: Must **close Steam process** first, otherwise modifications are overwritten by Steam's in-memory cache.
 - **Process**:
-  1.  Core sends signal achieving effect similar to `killall -TERM steam`, kills steam process and waits for termination.
-  2.  Parse VDF file, calculate next available `LibraryID` (Numeric string).
-  3.  Check if truly killed (e.g., `pgrep -x steam`), inject new JSON block:
+  1.  Record current Steam running state (`pgrep -x steam`).
+  2.  Call `steam --shutdown` to gracefully close Steam and wait for termination.
+  3.  Parse VDF file, calculate next available `LibraryID` (Numeric string).
+  4.  Inject new library entry:
       ```json
       "{NEXTID}" {
-          "path" "{MOUNT_PATH}"
+          "path" "{LIBRARY_PATH}"
           "label" ""
           "contentid" "0"
           "totalsize" "0"
           "apps" {}
       }
       ```
-  4.  Restart UI service (`systemctl restart sddm` or `steamos-session-select gamescope`) to reload Steam.
+  5.  If Steam was running before, restart it via `steam &`.
+- **Advantage**: Zero manual intervention required.
 
-### 5.2 Assisted Manual Solution (Desktop Mode)
+#### Mode 2: Semi-Automatic Execution
 
-If user prefers not to restart UI, provide guided manual addition:
+Opens Steam settings for user-guided manual addition.
 
-1.  Core calls `steam steam://open/settings/storage` to open settings window.
-2.  UI copies mount path to clipboard.
-3.  User manually clicks `+` to add.
+- **Process**:
+  1.  Call `steam steam://open/settings/storage` to open Storage settings.
+  2.  UI copies mount path to clipboard for easy pasting.
+  3.  User manually clicks `+` to add the library folder.
+- **Advantage**: No Steam restart required, user maintains full control.
+
+#### Mode 3: Manual Execution
+
+User handles everything independently.
+
+- **Process**:
+  1.  UI displays the mount path and brief instructions.
+  2.  User opens Steam Settings → Storage → Add Library Folder manually.
+- **Advantage**: Maximum user control, no automated actions.
 
 ---
 

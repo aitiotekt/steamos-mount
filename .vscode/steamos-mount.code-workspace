@@ -1,12 +1,12 @@
 {
 	"folders": [
 		{
-			"name": "decky-plugin",
-			"path": "../apps/decky-plugin"
-		},
-		{
 			"name": "steamos-mount",
 			"path": ".."
+		},
+		{
+			"name": "decky-plugin",
+			"path": "../apps/decky-plugin"
 		}
 	],
 	"settings": {

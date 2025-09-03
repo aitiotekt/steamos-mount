@@ -1,9 +1,17 @@
 {
-  "files": [],
+  "extends": "../../tsconfig.reactbase.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "src/*"
+      ]
+    }
+  },
+  "include": [
+    "src"
+  ],
   "references": [
-    {
-      "path": "./tsconfig.ui.json"
-    },
     {
       "path": "./tsconfig.node.json"
     }

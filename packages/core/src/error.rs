@@ -64,6 +64,10 @@ pub enum Error {
         source: std::io::Error,
     },
 
+    /// Mount point creation permission denied.
+    #[snafu(display("permission denied creating mount point at {}", path.display()))]
+    MountPointPermissionDenied { path: PathBuf },
+
     /// Mount operation failed.
     #[snafu(display("failed to mount device: {message}"))]
     Mount { message: String },
@@ -114,6 +118,10 @@ pub enum Error {
     /// Invalid UUID format.
     #[snafu(display("invalid UUID format: {uuid}"))]
     InvalidUuid { uuid: String },
+
+    /// User cancelled authentication dialog.
+    #[snafu(display("authentication cancelled by user"))]
+    AuthenticationCancelled,
 }
 
 /// Extension trait for adding context to io::Error results.
@@ -147,7 +155,6 @@ impl<T> IoResultExt<T> for std::result::Result<T, std::io::Error> {
     fn fstab_read_context(self, path: impl Into<PathBuf>) -> Result<T> {
         self.context(FstabReadSnafu { path: path.into() })
     }
-
     fn fstab_write_context(self, path: impl Into<PathBuf>) -> Result<T> {
         self.context(FstabWriteSnafu { path: path.into() })
     }

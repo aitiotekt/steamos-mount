@@ -1,50 +1,219 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { RefreshCw, HardDrive, Settings2, AlertCircle } from "lucide-react";
+import { useDevices } from "@/hooks/useDevices";
+import { DeviceCard } from "@/components/DeviceCard";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { toast } from "sonner";
+import { useConfirm } from "@/hooks/use-confirm";
+import { Store } from "@tauri-apps/plugin-store";
+import type { DeviceInfo, SteamState } from "@/types";
+import "@/index.css";
+
+import { MountSettingsDialog } from "@/components/mount-dialog";
+import { SettingsDialog } from "@/components/settings-dialog";
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  const { devices, loading, error, refresh } = useDevices();
+  const { confirm } = useConfirm();
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+  const [selectedDevice, setSelectedDevice] = useState<DeviceInfo | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [steamState, setSteamState] = useState<SteamState | null>(null);
+
+  const fetchSteamState = async () => {
+    try {
+      const store = await Store.load("settings.json");
+      const path = await store.get<string>("steamLibraryVdfPath");
+      const state = await invoke<SteamState>("get_steam_state", { steamVdfPath: path });
+      setSteamState(state);
+    } catch (e) {
+      console.error("Failed to fetch steam state", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchSteamState();
+  }, [refresh]); // Refresh steam state when devices refresh (or on mount/user action)
+
+  const handleMountClick = (device: DeviceInfo) => {
+    setSelectedDevice(device);
+    setDialogOpen(true);
+  };
+
+  const handleUnmount = async (device: DeviceInfo) => {
+    if (!device.mountpoint) return;
+
+    // Use the global confirm dialog
+    const confirmed = await confirm({
+      title: "Confirm Unmount",
+      description: `Are you sure you want to unmount ${device.label || device.name}? This might interrupt running applications.`,
+      variant: "default",
+    });
+
+    if (!confirmed) return;
+
+    try {
+      await invoke("unmount_device", { mountPoint: device.mountpoint });
+      toast.success("Successfully unmounted");
+      refresh();
+      fetchSteamState();
+    } catch (e) {
+      toast.error(`Unmount failed: ${e}`);
+    }
+  };
+
+  const handleRepair = async (device: DeviceInfo) => {
+    if (!device.uuid) return;
+
+    try {
+      await invoke("repair_dirty_volume", { uuid: device.uuid });
+      toast.success("Repair successful! You can now mount the device.");
+      refresh();
+    } catch (e) {
+      toast.error(`Repair failed: ${e}`);
+    }
+  };
+
+  const handleConfigureSteam = async (device: DeviceInfo) => {
+    if (!device.mountpoint) return;
+
+    try {
+      await invoke("inject_steam_library", {
+        config: {
+          mountPoint: device.mountpoint,
+          mode: "semi",
+        }
+      });
+
+      // Steam command is fire-and-forget, so we ask user to confirm completion
+      const confirmed = await confirm({
+        title: "Configure Steam Library",
+        description: "Steam Storage Manager has been opened. Please add the drive in Steam, then click Confirm here to refresh.",
+        variant: "default",
+        confirmText: "Refresh",
+        cancelText: "Cancel"
+      });
+
+      if (confirmed) {
+        refresh();
+        fetchSteamState();
+        toast.success("Refreshed device information");
+      }
+    } catch (e) {
+      toast.error(`Failed to open Steam settings: ${e}`);
+    }
+  };
+
+  const mountableDevices = devices.filter(
+    (d) => d.fstype === "ntfs" || d.fstype === "exfat"
+  );
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+    <div className="min-h-screen bg-background">
+      <TooltipProvider>
+        {/* Header */}
+        <header className="border-b">
+          <div className="container flex h-16 items-center justify-between">
+            <div className="flex items-center gap-2">
+              <HardDrive className="h-6 w-6" />
+              <h1 className="text-xl font-bold">SteamOS Mount</h1>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="icon" onClick={() => { refresh(); fetchSteamState(); }}>
+                <RefreshCw
+                  className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+                />
+              </Button>
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="inline-block">
+                    <Button
+                      variant={steamState?.isValid === false ? "outline" : "outline"}
+                      size="icon"
+                      onClick={() => setSettingsOpen(true)}
+                      className={steamState?.isValid === false ? "border-yellow-500 text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50 dark:text-yellow-400" : ""}
+                    >
+                      {steamState?.isValid === false ? (
+                        <AlertCircle className="h-4 w-4" />
+                      ) : (
+                        <Settings2 className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </TooltipTrigger>
+                {steamState?.isValid === false && (
+                  <TooltipContent>
+                    <p className="font-semibold">Steam Configuration Issue</p>
+                    <p className="text-xs">{steamState.error || "Library configuration invalid"}</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </div>
+          </div>
+        </header>
 
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+        {/* Main Content */}
+        <main className="container py-6">
+          {error && (
+            <div className="mb-4 p-4 bg-destructive/10 text-destructive rounded-lg">
+              {error}
+            </div>
+          )}
+
+          {loading && devices.length === 0 ? (
+            <div className="flex items-center justify-center py-12">
+              <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : mountableDevices.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <HardDrive className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No NTFS or exFAT devices found</p>
+              <p className="text-sm mt-2">
+                Connect an external drive or check your partitions
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(450px, 1fr))' }}>
+              {mountableDevices.map((device) => (
+                <DeviceCard
+                  key={device.uuid || device.name}
+                  device={device}
+                  steamLibraries={steamState?.libraries}
+                  onMount={handleMountClick}
+                  onUnmount={handleUnmount}
+                  onRepair={handleRepair}
+                  onConfigureSteam={handleConfigureSteam}
+                />
+              ))}
+            </div>
+          )}
+        </main>
+      </TooltipProvider>
+
+      <MountSettingsDialog
+        device={selectedDevice}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onSuccess={() => { refresh(); fetchSteamState(); }}
+      />
+
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        onSaved={fetchSteamState}
+      />
+
+      {/* Footer */}
+      <footer className="border-t mt-auto">
+        <div className="container py-4 text-center text-sm text-muted-foreground">
+          SteamOS Mount Tool v0.1.0 | Desktop Mode
+        </div>
+      </footer>
+    </div>
   );
 }
 

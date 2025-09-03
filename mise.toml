@@ -1,5 +1,5 @@
 [tools]
-node = "lts"
+node = "latest"
 pnpm = "10.28.0"
 python = "latest"
 rust = "nightly"

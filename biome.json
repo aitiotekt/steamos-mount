@@ -1,0 +1,108 @@
+{
+    "$schema": "https://biomejs.dev/schemas/2.3.11/schema.json",
+    "extends": [
+        "ultracite"
+    ],
+    "javascript": {
+        "globals": []
+    },
+    "linter": {
+        "rules": {
+            "nursery": {
+                "noEnum": "off"
+            },
+            "style": {
+                "noParameterProperties": "off",
+                "noNonNullAssertion": "off"
+            },
+            "security": {
+                "noDangerouslySetInnerHtml": "off"
+            },
+            "suspicious": {
+                "noEmptyBlockStatements": "off",
+                "noExplicitAny": "off",
+                "noConsole": "off"
+            },
+            "a11y": {
+                "noSvgWithoutTitle": "off"
+            },
+            "complexity": {
+                "noExcessiveCognitiveComplexity": {
+                    "level": "warn",
+                    "options": {
+                        "maxAllowedComplexity": 20
+                    }
+                },
+                "noBannedTypes": "off"
+            },
+            "correctness": {
+                "noUnusedImports": {
+                    "fix": "none",
+                    "level": "warn"
+                }
+            }
+        }
+    },
+    "overrides": [
+        {
+            "include": [
+                "**/tsconfig.json",
+                "**/tsconfig.*.json"
+            ],
+            "json": {
+                "parser": {
+                    "allowComments": true
+                }
+            }
+        },
+        {
+            "include": [
+                "apps/webui/src/infra/graphql/gql/**/*"
+            ],
+            "linter": {
+                "rules": {
+                    "style": {
+                        "useShorthandArrayType": "off",
+                        "useConsistentArrayType": "off",
+                        "useImportType": "off"
+                    }
+                }
+            }
+        },
+        {
+            "include": [
+                "apps/webui/src/components/ui/**/*"
+            ],
+            "javascript": {
+                "formatter": {
+                    "quoteStyle": "double"
+                }
+            },
+            "linter": {
+                "rules": {
+                    "style": {
+                        "useBlockStatements": "off",
+                        "useImportType": "off"
+                    },
+                    "nursery": {
+                        "noNestedTernary": "off",
+                        "useSortedClasses": "off"
+                    },
+                    "a11y": {
+                        "noRedundantRoles": "off",
+                        "useFocusableInteractive": "off",
+                        "useSemanticElements": "off"
+                    },
+                    "complexity": {
+                        "noExcessiveCognitiveComplexity": "off"
+                    }
+                }
+            }
+        }
+    ],
+    "files": {
+        "ignore": [
+            ".vscode/*.json"
+        ]
+    }
+}

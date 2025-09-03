@@ -178,36 +178,57 @@ UUID=1234-5678  /home/deck/Drives/GamesSSD  ntfs3  uid=1000,gid=1000,rw,umask=00
 
 ## 5. Steam 游戏库注入
 
-挂载成功后，需要让 Steam 识别该路径。
+挂载成功后，需要让 Steam 识别该路径。桌面模式应用提供三种执行模式供用户选择。
 
-### 5.1 自动化方案 (推荐)
+### 5.1 库路径配置
 
-通过脚本修改 Steam 的 VDF 配置文件。
+在注入前，用户可以为每个挂载的驱动器配置 Steam 库路径：
+
+- **默认路径**: `{挂载点}/SteamLibrary`（推荐）
+- **自定义路径**: 用户指定的子目录
+
+### 5.2 执行模式
+
+#### 模式 1: 自动执行（推荐）
+
+完全自动化的 VDF 修改，并恢复 Steam 状态。
 
 - **文件路径**: `~/.local/share/Steam/steamapps/libraryfolders.vdf`
-- **前置条件**: 必须先**关闭 Steam 进程**，否则修改会被 Steam 内存中的缓存覆盖。
 - **流程**:
-  1.  Core 发送信号实现类似 `killall -TERM steam` 的效果，杀死 steam 进程并等待进程结束。
-  2.  解析 VDF 文件，计算下一个可用的 `LibraryID` (Numeric string)。
-  3.  使用类似 `pgrep -x steam` 的方式检查是否真的已经杀死，注入新的 JSON 块：
+  1.  记录当前 Steam 运行状态 (`pgrep -x steam`)。
+  2.  调用 `steam --shutdown` 优雅关闭 Steam 并等待进程结束。
+  3.  解析 VDF 文件，计算下一个可用的 `LibraryID`（数字字符串）。
+  4.  注入新的库条目：
       ```json
       "{NEXTID}" {
-          "path" "{MOUNT_PATH}"
+          "path" "{库路径}"
           "label" ""
           "contentid" "0"
           "totalsize" "0"
           "apps" {}
       }
       ```
-  4.  重启 UI 服务 (`systemctl restart sddm` 或 `steamos-session-select gamescope`) 以重新加载 Steam。
+  5.  如果 Steam 之前正在运行，通过 `steam &` 重新启动。
+- **优势**: 无需手动干预。
 
-### 5.2 辅助手动方案 (桌面模式)
+#### 模式 2: 半自动执行
 
-如果用户不希望重启 UI，提供引导式手动添加：
+打开 Steam 设置，由用户引导式手动添加。
 
-1.  Core 调用 `steam steam://open/settings/storage` 打开设置窗口。
-2.  UI 将挂载路径复制到剪贴板。
-3.  用户手动点击 `+` 号添加。
+- **流程**:
+  1.  调用 `steam steam://open/settings/storage` 打开存储设置。
+  2.  UI 将挂载路径复制到剪贴板以便粘贴。
+  3.  用户手动点击 `+` 添加库文件夹。
+- **优势**: 无需重启 Steam，用户保持完全控制。
+
+#### 模式 3: 手动执行
+
+用户独立处理所有操作。
+
+- **流程**:
+  1.  UI 显示挂载路径和简要说明。
+  2.  用户手动打开 Steam 设置 → 存储 → 添加库文件夹。
+- **优势**: 最大程度的用户控制，无自动化操作。
 
 ---
 

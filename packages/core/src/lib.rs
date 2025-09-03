@@ -37,6 +37,8 @@
 //!         &mount_point,
 //!         "ntfs3",
 //!         &options,
+//!         0,
+//!         0,
 //!     );
 //!
 //!     // This would update fstab (requires root):
@@ -47,6 +49,7 @@
 
 pub mod disk;
 pub mod error;
+pub mod executor;
 pub mod fstab;
 pub mod mount;
 pub mod preset;
@@ -56,6 +59,7 @@ pub mod syscall;
 // Re-export commonly used types
 pub use disk::BlockDevice;
 pub use error::{Error, Result};
+pub use executor::{ExecutionContext, PrivilegeEscalation};
 pub use fstab::FstabEntry;
 pub use preset::{MountPreset, PresetConfig};
 pub use steam::LibraryFolder;

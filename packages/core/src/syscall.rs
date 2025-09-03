@@ -6,12 +6,18 @@
 use std::process::Command;
 
 use crate::error::{Error, IoResultExt, Result};
+use crate::executor::ExecutionContext;
 
 /// Reloads the systemd daemon to pick up configuration changes.
 ///
 /// This is equivalent to running `systemctl daemon-reload`.
 pub fn daemon_reload() -> Result<()> {
     run_systemctl(&["daemon-reload"])
+}
+
+/// Reloads the systemd daemon with privilege escalation support.
+pub fn daemon_reload_with_ctx(ctx: &ExecutionContext) -> Result<()> {
+    run_systemctl_with_ctx(&["daemon-reload"], ctx)
 }
 
 /// Starts a systemd mount unit.
@@ -22,6 +28,11 @@ pub fn start_unit(unit_name: &str) -> Result<()> {
     run_systemctl(&["start", unit_name])
 }
 
+/// Starts a systemd mount unit with privilege escalation support.
+pub fn start_unit_with_ctx(unit_name: &str, ctx: &ExecutionContext) -> Result<()> {
+    run_systemctl_with_ctx(&["start", unit_name], ctx)
+}
+
 /// Stops a systemd mount unit.
 ///
 /// # Arguments
@@ -30,12 +41,22 @@ pub fn stop_unit(unit_name: &str) -> Result<()> {
     run_systemctl(&["stop", unit_name])
 }
 
+/// Stops a systemd mount unit with privilege escalation support.
+pub fn stop_unit_with_ctx(unit_name: &str, ctx: &ExecutionContext) -> Result<()> {
+    run_systemctl_with_ctx(&["stop", unit_name], ctx)
+}
+
 /// Restarts a systemd unit.
 ///
 /// # Arguments
 /// * `unit_name` - The name of the unit to restart
 pub fn restart_unit(unit_name: &str) -> Result<()> {
     run_systemctl(&["restart", unit_name])
+}
+
+/// Restarts a systemd unit with privilege escalation support.
+pub fn restart_unit_with_ctx(unit_name: &str, ctx: &ExecutionContext) -> Result<()> {
+    run_systemctl_with_ctx(&["restart", unit_name], ctx)
 }
 
 /// Checks if a unit is active.
@@ -55,6 +76,11 @@ pub fn is_unit_active(unit_name: &str) -> Result<bool> {
 /// This is used to restart the Steam UI after VDF injection.
 pub fn restart_sddm() -> Result<()> {
     run_systemctl(&["restart", "sddm"])
+}
+
+/// Restarts the SDDM display manager with privilege escalation support.
+pub fn restart_sddm_with_ctx(ctx: &ExecutionContext) -> Result<()> {
+    run_systemctl_with_ctx(&["restart", "sddm"], ctx)
 }
 
 /// Runs `steamos-session-select` to switch session.
@@ -96,6 +122,27 @@ fn run_systemctl(args: &[&str]) -> Result<()> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(Error::Systemd { message: stderr });
+    }
+
+    Ok(())
+}
+
+/// Helper function to run systemctl commands with privilege escalation.
+fn run_systemctl_with_ctx(args: &[&str], ctx: &ExecutionContext) -> Result<()> {
+    let mut systemctl_args = vec!["systemctl"];
+    systemctl_args.extend(args);
+
+    // We need to call the wrapper differently - pass systemctl as the command
+    let output = ctx.run_privileged("systemctl", args)?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+        if output.status.code() == Some(126) {
+            return Err(Error::AuthenticationCancelled);
+        }
+
         return Err(Error::Systemd { message: stderr });
     }
 
