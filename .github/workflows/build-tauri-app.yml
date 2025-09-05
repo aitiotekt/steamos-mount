@@ -3,48 +3,44 @@ name: Build Tauri App
 on:
   workflow_dispatch:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - release
 
 jobs:
-  build:
+  build-tauri-app:
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
-    container:
-      image: archlinux:latest
-
     steps:
       - name: Update System and Install Dependencies
         run: |
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm base-devel git wget curl \
-            webkit2gtk-4.1 \
-            openssl \
-            appmenu-gtk-module \
-            gtk3 \
-            libappindicator-gtk3 \
-            librsvg \
-            rust \
-            nodejs \
-            npm
-          
-          # Install pnpm
-          npm install -g pnpm
-
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Build Tauri App
-        run: |
-          cd apps/tauri-app
-          pnpm tauri build
-
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
+      - name: setup pnpm
+        uses: pnpm/action-setup@v4
         with:
-          name: build-tauri-app
-          path: |
-            apps/tauri-app/src-tauri/target/release/bundle/deb/*.deb
-            apps/tauri-app/src-tauri/target/release/bundle/appimage/*.AppImage
+          version: 10.28.0
+          cache: true
+      
+      - name: Install dependencies
+        run: cd apps/tauri-app && pnpm install
+          
+      - name: install Rust Nightly
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Build and Release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: "./apps/tauri-app"
+          tagName: app-v__VERSION__
+          releaseName: "App v__VERSION__"
+          releaseBody: 'See the assets to download this version and install.'
+          releaseDraft: true
+          prerelease: if v__VERSION__ contains 'alpha' or 'beta' or 'rc' then true else false
+          args: --target x86_64-unknown-linux-gnu
