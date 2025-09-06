@@ -32,6 +32,17 @@ jobs:
       - name: install Rust Nightly
         uses: dtolnay/rust-toolchain@nightly
 
+      - name: Get App Version
+        id: get_version
+        run: |
+          VERSION=$(jq -r .version apps/tauri-app/src-tauri/tauri.conf.json)
+          echo "App version: $VERSION"
+          if [[ "$VERSION" == *"alpha"* ]] || [[ "$VERSION" == *"beta"* ]] || [[ "$VERSION" == *"rc"* ]]; then
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Build and Release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -42,5 +53,5 @@ jobs:
           releaseName: "App v__VERSION__"
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: true
-          prerelease: if v__VERSION__ contains 'alpha' or 'beta' or 'rc' then true else false
+          prerelease: ${{ steps.get_version.outputs.prerelease }}
           args: --target x86_64-unknown-linux-gnu
