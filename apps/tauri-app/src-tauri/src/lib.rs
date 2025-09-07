@@ -17,6 +17,14 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            let version = app.package_info().version.to_string();
+            // Conditionally enable devtools plugin for alpha/beta/rc versions
+            if version.contains("alpha") || version.contains("beta") || version.contains("rc") {
+                app.handle().plugin(tauri_plugin_devtools::init())?;
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             list_devices,
             get_device_info,

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { RefreshCw, HardDrive, Settings2, AlertCircle } from "lucide-react";
 import { useDevices } from "@/hooks/useDevices";
 import { DeviceCard } from "@/components/DeviceCard";
@@ -22,6 +23,11 @@ function App() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [steamState, setSteamState] = useState<SteamState | null>(null);
+  const [appVersion, setAppVersion] = useState<string>("");
+
+  useEffect(() => {
+    getVersion().then(setAppVersion);
+  }, []);
 
   const fetchSteamState = async () => {
     try {
@@ -210,7 +216,7 @@ function App() {
       {/* Footer */}
       <footer className="border-t mt-auto">
         <div className="container py-4 text-center text-sm text-muted-foreground">
-          SteamOS Mount Tool v0.1.0 | Desktop Mode
+          SteamOS Mount Tool v{appVersion} | Desktop Mode
         </div>
       </footer>
     </div>
