@@ -43,10 +43,17 @@ jobs:
             echo "prerelease=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Install Tauri CLI (Experimental AppImage)
+        run: |
+          cargo install tauri-cli \
+            --git https://github.com/tauri-apps/tauri \
+            --branch feat/truly-portable-appimage
+
       - name: Build and Release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_BUNDLER_NEW_APPIMAGE_FORMAT: "true"
         with:
           projectPath: "./apps/tauri-app"
           tagName: app-v__VERSION__

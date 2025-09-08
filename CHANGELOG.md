@@ -30,3 +30,8 @@
   - **Responsive Design**: Unified card layout with bottom-aligned actions for a consistent look.
   - **Visual Feedback**: Toast notifications for operations and detailed error reporting.
   - **Dark Mode**: Fully supported UI with adaptative colors.
+
+#### Build
+- **Arch Linux Support**:
+  - Fix AppImage bundling on Arch Linux using experimental Tauri CLI branch (`feat/truly-portable-appimage`).
+  - Add `just prepare-on-archlinux` helper to install build dependencies (`patchelf`, `squashfs-tools`, etc).

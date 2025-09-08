@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getVersion } from "@tauri-apps/api/app";
 import { RefreshCw, HardDrive, Settings2, AlertCircle } from "lucide-react";
 import { useDevices } from "@/hooks/useDevices";
 import { DeviceCard } from "@/components/DeviceCard";
@@ -8,12 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { useConfirm } from "@/hooks/use-confirm";
-import { Store } from "@tauri-apps/plugin-store";
-import type { DeviceInfo, SteamState } from "@/types";
+import type { DeviceInfo } from "@/types";
 import "@/index.css";
 
 import { MountSettingsDialog } from "@/components/mount-dialog";
 import { SettingsDialog } from "@/components/settings-dialog";
+import { useAtom } from "jotai";
+import { tauriStoreAtom, appVersionAtom, fetchSteamState, steamStateAtom } from "./store";
 
 function App() {
   const { devices, loading, error, refresh } = useDevices();
@@ -22,27 +22,17 @@ function App() {
   const [selectedDevice, setSelectedDevice] = useState<DeviceInfo | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [steamState, setSteamState] = useState<SteamState | null>(null);
-  const [appVersion, setAppVersion] = useState<string>("");
 
+  const [appVersion] = useAtom(appVersionAtom);
+  const [tauriStore] = useAtom(tauriStoreAtom);
+  const [steamState] = useAtom(steamStateAtom);
+
+  // Initialize store once
   useEffect(() => {
-    getVersion().then(setAppVersion);
-  }, []);
-
-  const fetchSteamState = async () => {
-    try {
-      const store = await Store.load("settings.json");
-      const path = await store.get<string>("steamLibraryVdfPath");
-      const state = await invoke<SteamState>("get_steam_state", { steamVdfPath: path });
-      setSteamState(state);
-    } catch (e) {
-      console.error("Failed to fetch steam state", e);
+    if (!tauriStore) {
+      toast.error("Failed to load settings configuration");
     }
-  };
-
-  useEffect(() => {
-    fetchSteamState();
-  }, [refresh]); // Refresh steam state when devices refresh (or on mount/user action)
+  }, []);
 
   const handleMountClick = (device: DeviceInfo) => {
     setSelectedDevice(device);
@@ -113,9 +103,11 @@ function App() {
     }
   };
 
-  const mountableDevices = devices.filter(
-    (d) => d.fstype === "ntfs" || d.fstype === "exfat"
-  );
+  const mountableDevices = useMemo(() => {
+    return devices.filter(
+      (d) => d.fstype === "ntfs" || d.fstype === "exfat"
+    );
+  }, [devices]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -211,6 +203,7 @@ function App() {
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         onSaved={fetchSteamState}
+        store={tauriStore}
       />
 
       {/* Footer */}

@@ -13,35 +13,46 @@ interface SettingsDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     onSaved?: () => void;
+    store: Store | null;
 }
 
-const STORE_PATH = "settings.json";
 const VDF_PATH_KEY = "steamLibraryVdfPath";
 
-export function SettingsDialog({ open, onOpenChange, onSaved }: SettingsDialogProps) {
+export function SettingsDialog({ open, onOpenChange, onSaved, store }: SettingsDialogProps) {
     const [vdfPath, setVdfPath] = useState("");
     const [loading, setLoading] = useState(false);
-    const [store, setStore] = useState<Store | null>(null);
 
-    // Initialize store
+    // Initialize from store
     useEffect(() => {
-        const initStore = async () => {
+        if (!store || !open) return;
+
+        let active = true;
+
+        const loadSettings = async () => {
+            // Small delay to ensure dialog animation starts smoothly
+            await new Promise(resolve => setTimeout(resolve, 50));
+            if (!active) return;
+
             try {
-                const s = await Store.load(STORE_PATH);
-                setStore(s);
-                const val = await s.get<string>(VDF_PATH_KEY);
-                if (val) {
-                    setVdfPath(val);
-                } else {
-                    handleAutoDetect(false);
+                const val = await store.get<string>(VDF_PATH_KEY);
+                if (active) {
+                    if (val) {
+                        setVdfPath(val);
+                    } else if (vdfPath === "") { // Only if empty
+                        // Only auto-detect if path is empty and not yet set
+                        handleAutoDetect(false);
+                    }
                 }
             } catch (e) {
-                console.error("Failed to init store:", e);
-                toast.error("Failed to load settings");
+                console.error("Failed to load settings:", e);
+                // Don't toast here to avoid spam/freeze if it loops
             }
         };
-        initStore();
-    }, []);
+
+        loadSettings();
+
+        return () => { active = false; };
+    }, [open, store]);
 
     const handleAutoDetect = async (notify = true) => {
         setLoading(true);
