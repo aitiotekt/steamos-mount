@@ -10,7 +10,7 @@ jobs:
   build-tauri-app:
     permissions:
       contents: write
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Update System and Install Dependencies
         run: |
@@ -18,7 +18,7 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: setup pnpm
         uses: pnpm/action-setup@v4
@@ -31,6 +31,12 @@ jobs:
           
       - name: install Rust Nightly
         uses: dtolnay/rust-toolchain@nightly
+      
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+           workspaces: |
+             apps/tauri-app/src-tauri -> target 
 
       - name: Get App Version
         id: get_version
@@ -47,7 +53,8 @@ jobs:
         run: |
           cargo install tauri-cli \
             --git https://github.com/tauri-apps/tauri \
-            --branch feat/truly-portable-appimage
+            --branch feat/truly-portable-appimage \
+            --force
 
       - name: Build and Release
         uses: tauri-apps/tauri-action@v0
@@ -61,4 +68,5 @@ jobs:
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: true
           prerelease: ${{ steps.get_version.outputs.prerelease }}
+          tauriScript: "~/.cargo/bin/tauri"
           args: --target x86_64-unknown-linux-gnu
