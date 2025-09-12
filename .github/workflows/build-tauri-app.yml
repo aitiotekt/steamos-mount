@@ -28,7 +28,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: lts/*
+          node-version: 24
           cache: pnpm
       
       - name: Install dependencies
@@ -81,5 +81,5 @@ jobs:
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: true
           prerelease: ${{ steps.get_version.outputs.prerelease }}
-          tauriScript: "~/.cargo/bin/tauri"
+          tauriScript: "cargo tauri"
           args: --target x86_64-unknown-linux-gnu
