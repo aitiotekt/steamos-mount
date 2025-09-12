@@ -65,12 +65,12 @@ jobs:
         if: steps.cache-tauri.outputs.cache-hit != 'true'
         run: |
           cargo install tauri-cli \
-            --git https://github.com/aitiotekt/tauri \
+            --git https://github.com/tauri-apps/tauri \
             --branch feat/truly-portable-appimage \
             --force
 
       - name: Build and Release
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@390cbe447412ced1303d35abe75287949e43437a
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_BUNDLER_NEW_APPIMAGE_FORMAT: "true"
