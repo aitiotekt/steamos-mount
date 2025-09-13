@@ -122,6 +122,14 @@ pub enum Error {
     /// User cancelled authentication dialog.
     #[snafu(display("authentication cancelled by user"))]
     AuthenticationCancelled,
+
+    /// Failed to create privileged session.
+    #[snafu(display("failed to create privileged session: {message}"))]
+    SessionCreation { message: String },
+
+    /// Failed to communicate with privileged session.
+    #[snafu(display("session communication error: {message}"))]
+    SessionCommunication { message: String },
 }
 
 /// Extension trait for adding context to io::Error results.

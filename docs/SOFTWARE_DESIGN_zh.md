@@ -151,7 +151,92 @@ steamos-mount/
   6.  **错误处理**: 如果修复失败，Core 会记录错误日志，UI 可以显示错误信息，建议用户回到 windows 使用 `chkdsk` 工具修复。
 - **警告**: `force` 参数虽然能强行挂载，但极易导致数据损坏，本项目**严禁**默认使用 `force`，必须通过修复流程解决。
 
----
+### 3.5 提权会话模式 (Privilege Escalation Session)
+
+单次用户操作涉及多个提权命令（挂载、fstab 写入、systemd 重载）时，通常需要多次认证提示。Session 模式通过启动单个提权 daemon 进程解决此问题。
+
+#### 架构
+
+```mermaid
+flowchart LR
+    subgraph MainProcess[主进程]
+        EC[ExecutionContext]
+        PS[PrivilegedSession]
+    end
+    
+    subgraph ChildProcess["pkexec/sudo steamos-mount-cli daemon"]
+        Daemon[CLI Daemon]
+    end
+    
+    EC --> PS
+    PS -- "stdin: JSON 请求" --> Daemon
+    Daemon -- "stdout: JSON 响应" --> PS
+```
+
+#### 工作流程
+
+```mermaid
+sequenceDiagram
+    participant Main as 主进程
+    participant Session as PrivilegedSession
+    participant Daemon as steamos-mount-cli daemon
+
+    Main->>Session: with_pkexec_session()
+    Note over Session: 延迟初始化
+    Main->>Session: run_privileged("mount", args)
+    Session->>Daemon: pkexec steamos-mount-cli daemon
+    Note over Daemon: 用户认证一次
+    Session->>Daemon: {"cmd":"exec","program":"mount"...}
+    Daemon->>Session: {"success":true,"exit_code":0...}
+    Main->>Session: run_privileged("systemctl", args)
+    Session->>Daemon: {"cmd":"exec","program":"systemctl"...}
+    Daemon->>Session: {"success":true...}
+    Note over Session: 无需再次认证
+```
+
+#### 通信协议
+
+通过 stdin/stdout 的 JSON-RPC 风格通信：
+
+```json
+// 请求类型
+{"cmd":"exec","id":1,"program":"mount","args":["/dev/sda1","/mnt"]}
+{"cmd":"write_file","id":2,"path":"/etc/fstab","content":"..."}
+{"cmd":"copy_file","id":3,"src":"/etc/fstab","dst":"/etc/fstab.bak"}
+{"cmd":"mkdir_p","id":4,"path":"/home/deck/Drives/GamesSSD"}
+{"cmd":"shutdown"}
+
+// 响应
+{"id":1,"success":true,"exit_code":0,"stdout":"","stderr":""}
+```
+
+#### 孤儿进程防护
+
+Daemon 在 Linux 上使用 `prctl(PR_SET_PDEATHSIG, SIGTERM)`，在父进程死亡时接收 SIGTERM 信号，确保自动清理。
+
+#### 安全机制
+
+> [!IMPORTANT]
+> Daemon 实现了加密签名以防止通过 `/proc/PID/fd` 访问进行的未授权提权。
+
+**威胁模型**：具有相同用户权限的恶意进程可能通过 `/proc/PID/fd` 访问 daemon 的 stdin/stdout 管道，从而绕过初始 `pkexec` 认证。
+
+**缓解措施**：
+
+1. **握手与密钥交换**：
+   - Daemon 在启动时生成 32 字节随机密钥
+   - 密钥通过 stdout 发送给父进程（只有父进程持有管道）
+   
+2. **HMAC-SHA256 签名请求**：
+   ```json
+   {"id":1,"hmac":"a1b2c3...","cmd":"exec","program":"mount",...}
+   ```
+   - 签名：`HMAC-SHA256(secret, id || cmd_json)`
+   - Daemon 拒绝签名无效的请求
+
+3. **防重放保护**：
+   - 请求 ID 必须单调递增
+   - Daemon 跟踪最后看到的 ID，拒绝 `id <= last_id` 的请求
 
 ## 4. 配置文件管理 (`/etc/fstab`)
 

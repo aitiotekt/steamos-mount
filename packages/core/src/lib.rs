@@ -53,6 +53,7 @@ pub mod executor;
 pub mod fstab;
 pub mod mount;
 pub mod preset;
+pub mod protocol;
 pub mod steam;
 pub mod syscall;
 

@@ -151,7 +151,92 @@ This is a key point for improved ergonomics. NTFS driver refuses to mount when D
   6.  **Error Handling**: If repair fails, Core logs error, UI shows error message advising user to use `chkdsk` in Windows.
 - **Warning**: Although `force` parameter can force mount, it highly risks data corruption. This project **strictly prohibits** default use of `force` and must resolve via repair flow.
 
----
+### 3.5 Privilege Escalation Session
+
+Multiple privileged operations (mount, fstab write, systemd reload) during a single user action would normally require repeated authentication prompts. The Session Mode solves this by launching a single privileged daemon process.
+
+#### Architecture
+
+```mermaid
+flowchart LR
+    subgraph MainProcess[Main Process]
+        EC[ExecutionContext]
+        PS[PrivilegedSession]
+    end
+    
+    subgraph ChildProcess["pkexec/sudo steamos-mount-cli daemon"]
+        Daemon[CLI Daemon]
+    end
+    
+    EC --> PS
+    PS -- "stdin: JSON Request" --> Daemon
+    Daemon -- "stdout: JSON Response" --> PS
+```
+
+#### Workflow
+
+```mermaid
+sequenceDiagram
+    participant Main as Main Process
+    participant Session as PrivilegedSession
+    participant Daemon as steamos-mount-cli daemon
+
+    Main->>Session: with_pkexec_session()
+    Note over Session: Lazy initialization
+    Main->>Session: run_privileged("mount", args)
+    Session->>Daemon: pkexec steamos-mount-cli daemon
+    Note over Daemon: User authenticates once
+    Session->>Daemon: {"cmd":"exec","program":"mount"...}
+    Daemon->>Session: {"success":true,"exit_code":0...}
+    Main->>Session: run_privileged("systemctl", args)
+    Session->>Daemon: {"cmd":"exec","program":"systemctl"...}
+    Daemon->>Session: {"success":true...}
+    Note over Session: No re-authentication
+```
+
+#### Protocol
+
+JSON-RPC style communication over stdin/stdout:
+
+```json
+// Request types
+{"cmd":"exec","id":1,"program":"mount","args":["/dev/sda1","/mnt"]}
+{"cmd":"write_file","id":2,"path":"/etc/fstab","content":"..."}
+{"cmd":"copy_file","id":3,"src":"/etc/fstab","dst":"/etc/fstab.bak"}
+{"cmd":"mkdir_p","id":4,"path":"/home/deck/Drives/GamesSSD"}
+{"cmd":"shutdown"}
+
+// Response
+{"id":1,"success":true,"exit_code":0,"stdout":"","stderr":""}
+```
+
+#### Orphan Process Prevention
+
+The daemon uses `prctl(PR_SET_PDEATHSIG, SIGTERM)` on Linux to receive SIGTERM when the parent process dies, ensuring automatic cleanup.
+
+#### Security
+
+> [!IMPORTANT]
+> The daemon implements cryptographic signing to prevent unauthorized privilege escalation via `/proc/PID/fd` access.
+
+**Threat Model**: A malicious process with same-user permissions could potentially access the daemon's stdin/stdout pipes via `/proc/PID/fd`, bypassing the initial `pkexec` authentication.
+
+**Mitigations**:
+
+1. **Handshake with Secret Exchange**:
+   - Daemon generates a 32-byte random secret on startup
+   - Secret is sent to parent via stdout (only parent holds the pipe)
+   
+2. **HMAC-SHA256 Signed Requests**:
+   ```json
+   {"id":1,"hmac":"a1b2c3...","cmd":"exec","program":"mount",...}
+   ```
+   - Signature: `HMAC-SHA256(secret, id || cmd_json)`
+   - Daemon rejects requests with invalid signatures
+
+3. **Anti-Replay Protection**:
+   - Request IDs must be monotonically increasing
+   - Daemon tracks last seen ID and rejects `id <= last_id`
 
 ## 4. Configuration Management (`/etc/fstab`)
 

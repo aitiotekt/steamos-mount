@@ -16,7 +16,7 @@ pub fn daemon_reload() -> Result<()> {
 }
 
 /// Reloads the systemd daemon with privilege escalation support.
-pub fn daemon_reload_with_ctx(ctx: &ExecutionContext) -> Result<()> {
+pub fn daemon_reload_with_ctx(ctx: &mut ExecutionContext) -> Result<()> {
     run_systemctl_with_ctx(&["daemon-reload"], ctx)
 }
 
@@ -29,7 +29,7 @@ pub fn start_unit(unit_name: &str) -> Result<()> {
 }
 
 /// Starts a systemd mount unit with privilege escalation support.
-pub fn start_unit_with_ctx(unit_name: &str, ctx: &ExecutionContext) -> Result<()> {
+pub fn start_unit_with_ctx(unit_name: &str, ctx: &mut ExecutionContext) -> Result<()> {
     run_systemctl_with_ctx(&["start", unit_name], ctx)
 }
 
@@ -42,7 +42,7 @@ pub fn stop_unit(unit_name: &str) -> Result<()> {
 }
 
 /// Stops a systemd mount unit with privilege escalation support.
-pub fn stop_unit_with_ctx(unit_name: &str, ctx: &ExecutionContext) -> Result<()> {
+pub fn stop_unit_with_ctx(unit_name: &str, ctx: &mut ExecutionContext) -> Result<()> {
     run_systemctl_with_ctx(&["stop", unit_name], ctx)
 }
 
@@ -55,7 +55,7 @@ pub fn restart_unit(unit_name: &str) -> Result<()> {
 }
 
 /// Restarts a systemd unit with privilege escalation support.
-pub fn restart_unit_with_ctx(unit_name: &str, ctx: &ExecutionContext) -> Result<()> {
+pub fn restart_unit_with_ctx(unit_name: &str, ctx: &mut ExecutionContext) -> Result<()> {
     run_systemctl_with_ctx(&["restart", unit_name], ctx)
 }
 
@@ -79,7 +79,7 @@ pub fn restart_sddm() -> Result<()> {
 }
 
 /// Restarts the SDDM display manager with privilege escalation support.
-pub fn restart_sddm_with_ctx(ctx: &ExecutionContext) -> Result<()> {
+pub fn restart_sddm_with_ctx(ctx: &mut ExecutionContext) -> Result<()> {
     run_systemctl_with_ctx(&["restart", "sddm"], ctx)
 }
 
@@ -129,7 +129,7 @@ fn run_systemctl(args: &[&str]) -> Result<()> {
 }
 
 /// Helper function to run systemctl commands with privilege escalation.
-fn run_systemctl_with_ctx(args: &[&str], ctx: &ExecutionContext) -> Result<()> {
+fn run_systemctl_with_ctx(args: &[&str], ctx: &mut ExecutionContext) -> Result<()> {
     let mut systemctl_args = vec!["systemctl"];
     systemctl_args.extend(args);
 

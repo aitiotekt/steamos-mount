@@ -266,7 +266,7 @@ pub fn backup_fstab(path: &Path) -> Result<PathBuf> {
 /// Creates a timestamped backup with privilege escalation support.
 pub fn backup_fstab_with_ctx(
     path: &Path,
-    ctx: &crate::executor::ExecutionContext,
+    ctx: &mut crate::executor::ExecutionContext,
 ) -> Result<PathBuf> {
     let timestamp = chrono_lite_timestamp();
     let backup_name = format!("{}.backup.{}", path.display(), timestamp);
@@ -310,7 +310,7 @@ pub fn write_managed_entries(path: &Path, entries: &[FstabEntry]) -> Result<()> 
 pub fn write_managed_entries_with_ctx(
     path: &Path,
     entries: &[FstabEntry],
-    ctx: &crate::executor::ExecutionContext,
+    ctx: &mut crate::executor::ExecutionContext,
 ) -> Result<()> {
     let content = fs::read_to_string(path).fstab_read_context(path)?;
     let new_content = update_managed_entries_content(&content, entries)?;

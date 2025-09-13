@@ -10,7 +10,9 @@
 - **Steam Integration**:
   - `libraryfolders.vdf` parsing and injection logic.
   - Capability to inject new library paths into Steam configuration.
-- **Smart Privilege Handling**: Uses `pkexec` strictly when required (e.g., for `mount` syscalls or fstab writes), minimizing root interaction.
+- **Smart Privilege Handling**:
+  - Uses `pkexec` strictly when required (e.g., for `mount` syscalls or fstab writes), minimizing root interaction.
+  - **Privileged Session Mode**: Single-auth execution for multiple commands via a secure JSON-RPC daemon (HMAC-SHA256 signed).
 
 #### UI/UX (Tauri App)
 - **Device Management**:

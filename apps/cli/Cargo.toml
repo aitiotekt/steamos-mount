@@ -3,4 +3,17 @@ name = "steamos-mount-cli"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "steamos-mount-cli"
+path = "src/main.rs"
+
 [dependencies]
+steamos-mount-core = { path = "../../packages/core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+nix = { version = "0.30", features = ["process", "signal"] }
+hmac = "0.12"
+sha2 = "0.10"
+rand = "0.9"
+hex = "0.4"

@@ -22,7 +22,7 @@ pub fn create_mount_point(path: &Path) -> Result<()> {
 }
 
 /// Creates a mount point directory with privilege escalation if needed.
-pub fn create_mount_point_with_ctx(path: &Path, ctx: &ExecutionContext) -> Result<()> {
+pub fn create_mount_point_with_ctx(path: &Path, ctx: &mut ExecutionContext) -> Result<()> {
     // Default behavior is to try privileged creation if ctx allows,
     // but here we redirect to smart with try_unprivileged=false to keep existing behavior
     // where caller likely expects ctx to be used actively.
@@ -38,7 +38,7 @@ pub fn create_mount_point_with_ctx(path: &Path, ctx: &ExecutionContext) -> Resul
 /// Otherwise (or if `try_unprivileged` is false), it uses the execution context (potentially privileged).
 pub fn create_mount_point_smart(
     path: &Path,
-    ctx: &ExecutionContext,
+    ctx: &mut ExecutionContext,
     try_unprivileged: bool,
 ) -> Result<()> {
     if path.exists() {
@@ -79,14 +79,14 @@ pub fn create_mount_point_smart(
 /// Uses the `mount` command with the device path.
 /// This version runs without privilege escalation.
 pub fn mount_device(device: &BlockDevice, mount_point: &Path) -> Result<()> {
-    mount_device_with_ctx(device, mount_point, &ExecutionContext::default())
+    mount_device_with_ctx(device, mount_point, &mut ExecutionContext::default())
 }
 
 /// Mounts a device with privilege escalation support.
 pub fn mount_device_with_ctx(
     device: &BlockDevice,
     mount_point: &Path,
-    ctx: &ExecutionContext,
+    ctx: &mut ExecutionContext,
 ) -> Result<()> {
     // Ensure mount point exists
     create_mount_point_with_ctx(mount_point, ctx)?;
@@ -119,11 +119,11 @@ pub fn mount_device_with_ctx(
 
 /// Unmounts a device from the specified mount point.
 pub fn unmount_device(mount_point: &Path) -> Result<()> {
-    unmount_device_with_ctx(mount_point, &ExecutionContext::default())
+    unmount_device_with_ctx(mount_point, &mut ExecutionContext::default())
 }
 
 /// Unmounts a device with privilege escalation support.
-pub fn unmount_device_with_ctx(mount_point: &Path, ctx: &ExecutionContext) -> Result<()> {
+pub fn unmount_device_with_ctx(mount_point: &Path, ctx: &mut ExecutionContext) -> Result<()> {
     let mount_point_str = mount_point.display().to_string();
     let output = ctx.run_privileged("umount", &[&mount_point_str])?;
 
@@ -162,14 +162,17 @@ fn is_dirty_volume_error(stderr: &str) -> bool {
 /// Note: On some systems, `dmesg` requires root privileges
 /// (kernel.dmesg_restrict=1). Use `detect_dirty_volume_with_ctx` if needed.
 pub fn detect_dirty_volume(device: &BlockDevice) -> Result<bool> {
-    detect_dirty_volume_with_ctx(device, &ExecutionContext::default())
+    detect_dirty_volume_with_ctx(device, &mut ExecutionContext::default())
 }
 
 /// Detects a dirty NTFS volume with privilege escalation support.
 ///
 /// Uses dmesg to check for dirty volume messages. On systems with
 /// `kernel.dmesg_restrict=1`, this requires elevated privileges.
-pub fn detect_dirty_volume_with_ctx(device: &BlockDevice, ctx: &ExecutionContext) -> Result<bool> {
+pub fn detect_dirty_volume_with_ctx(
+    device: &BlockDevice,
+    ctx: &mut ExecutionContext,
+) -> Result<bool> {
     // Only NTFS can have dirty volumes
     if !device.is_ntfs() {
         return Ok(false);
@@ -198,11 +201,14 @@ pub fn detect_dirty_volume_with_ctx(device: &BlockDevice, ctx: &ExecutionContext
 ///
 /// Runs `ntfsfix -d <device>` to clear the dirty flag.
 pub fn repair_dirty_volume(device: &BlockDevice) -> Result<()> {
-    repair_dirty_volume_with_ctx(device, &ExecutionContext::default())
+    repair_dirty_volume_with_ctx(device, &mut ExecutionContext::default())
 }
 
 /// Repairs a dirty NTFS volume with privilege escalation support.
-pub fn repair_dirty_volume_with_ctx(device: &BlockDevice, ctx: &ExecutionContext) -> Result<()> {
+pub fn repair_dirty_volume_with_ctx(
+    device: &BlockDevice,
+    ctx: &mut ExecutionContext,
+) -> Result<()> {
     if !device.is_ntfs() {
         return Err(Error::Ntfsfix {
             device: device.path.display().to_string(),
@@ -235,7 +241,7 @@ pub fn reload_systemd_daemon() -> Result<()> {
 }
 
 /// Reloads systemd daemon with privilege escalation support.
-pub fn reload_systemd_daemon_with_ctx(ctx: &ExecutionContext) -> Result<()> {
+pub fn reload_systemd_daemon_with_ctx(ctx: &mut ExecutionContext) -> Result<()> {
     crate::syscall::daemon_reload_with_ctx(ctx)
 }
 

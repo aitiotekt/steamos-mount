@@ -105,7 +105,7 @@ pub async fn get_default_mount_point(uuid: String) -> Result<String, String> {
 /// Mounts a device with the specified configuration.
 #[command]
 pub async fn mount_device(config: MountConfig) -> Result<MountResult, String> {
-    let ctx = gui_context();
+    let mut ctx = gui_context();
 
     // Find the device by UUID
     let devices = disk::list_block_devices().map_err(|e| e.to_string())?;
@@ -123,7 +123,7 @@ pub async fn mount_device(config: MountConfig) -> Result<MountResult, String> {
 
     // Check for dirty volume first
     if device.is_ntfs() && !device.is_mounted() {
-        if let Ok(is_dirty) = mount::detect_dirty_volume_with_ctx(device, &ctx) {
+        if let Ok(is_dirty) = mount::detect_dirty_volume_with_ctx(device, &mut ctx) {
             if is_dirty {
                 return Ok(MountResult {
                     success: false,
@@ -163,7 +163,8 @@ pub async fn mount_device(config: MountConfig) -> Result<MountResult, String> {
 
     // Create mount point with smart privilege handling
     // If not forced, try as user first
-    if let Err(e) = mount::create_mount_point_smart(&mount_point, &ctx, !config.force_root_creation)
+    if let Err(e) =
+        mount::create_mount_point_smart(&mount_point, &mut ctx, !config.force_root_creation)
     {
         return Ok(MountResult {
             success: false,
@@ -182,16 +183,17 @@ pub async fn mount_device(config: MountConfig) -> Result<MountResult, String> {
 
     // Backup fstab with privilege escalation
     let fstab_path = std::path::Path::new(fstab::FSTAB_PATH);
-    fstab::backup_fstab_with_ctx(fstab_path, &ctx).map_err(|e| e.to_string())?;
+    fstab::backup_fstab_with_ctx(fstab_path, &mut ctx).map_err(|e| e.to_string())?;
 
     // Write fstab with privilege escalation
-    fstab::write_managed_entries_with_ctx(fstab_path, &[entry], &ctx).map_err(|e| e.to_string())?;
+    fstab::write_managed_entries_with_ctx(fstab_path, &[entry], &mut ctx)
+        .map_err(|e| e.to_string())?;
 
     // Reload systemd daemon
-    mount::reload_systemd_daemon_with_ctx(&ctx).map_err(|e| e.to_string())?;
+    mount::reload_systemd_daemon_with_ctx(&mut ctx).map_err(|e| e.to_string())?;
 
     // Mount the device
-    match mount::mount_device_with_ctx(device, &mount_point, &ctx) {
+    match mount::mount_device_with_ctx(device, &mount_point, &mut ctx) {
         Ok(()) => Ok(MountResult {
             success: true,
             mount_point: mount_point_str,
@@ -221,35 +223,35 @@ pub async fn mount_device(config: MountConfig) -> Result<MountResult, String> {
 /// Unmounts a device from the specified mount point.
 #[command]
 pub async fn unmount_device(mount_point: String) -> Result<(), String> {
-    let ctx = gui_context();
+    let mut ctx = gui_context();
     let path = std::path::PathBuf::from(&mount_point);
-    mount::unmount_device_with_ctx(&path, &ctx).map_err(|e| e.to_string())
+    mount::unmount_device_with_ctx(&path, &mut ctx).map_err(|e| e.to_string())
 }
 
 /// Checks if a device has a dirty NTFS volume.
 #[command]
 pub async fn check_dirty_volume(uuid: String) -> Result<bool, String> {
-    let ctx = gui_context();
+    let mut ctx = gui_context();
     let devices = disk::list_block_devices().map_err(|e| e.to_string())?;
     let device = devices
         .iter()
         .find(|d| d.uuid.as_ref() == Some(&uuid))
         .ok_or_else(|| format!("Device with UUID {} not found", uuid))?;
 
-    mount::detect_dirty_volume_with_ctx(device, &ctx).map_err(|e| e.to_string())
+    mount::detect_dirty_volume_with_ctx(device, &mut ctx).map_err(|e| e.to_string())
 }
 
 /// Attempts to repair a dirty NTFS volume.
 #[command]
 pub async fn repair_dirty_volume(uuid: String) -> Result<(), String> {
-    let ctx = gui_context();
+    let mut ctx = gui_context();
     let devices = disk::list_block_devices().map_err(|e| e.to_string())?;
     let device = devices
         .iter()
         .find(|d| d.uuid.as_ref() == Some(&uuid))
         .ok_or_else(|| format!("Device with UUID {} not found", uuid))?;
 
-    mount::repair_dirty_volume_with_ctx(device, &ctx).map_err(|e| e.to_string())
+    mount::repair_dirty_volume_with_ctx(device, &mut ctx).map_err(|e| e.to_string())
 }
 
 /// Detects the default Steam libraryfolders.vdf path.
