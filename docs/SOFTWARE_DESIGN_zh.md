@@ -88,7 +88,7 @@ steamos-mount/
 - **推荐策略**: 提供 UUID 和 PARTUUID 两种选择，并在 UI 中提供说明。
   - **UUID (默认推荐)**: 绑定于文件系统。格式化后失效，但移动分区位置不失效。适合大多数用户。
   - **PARTUUID**: 绑定于分区表。格式化文件系统后依然有效（只要不删分区）。适合高级用户。
-  - **注意**: 写入配置时必须转换为**小写**，以兼容 `/dev/disk/by-uuid/` 路径查找。
+  - **注意**: 写入配置时应该优先遵守 blkid 的值，并且必须检查 `/dev/disk/by-uuid/<UUID>` 或者 `/dev/disk/by-partuuid/<PARTUUID>` 是否存在，以兼容 `/dev/disk/by-uuid/` 和 `/dev/disk/by-partuuid/` 路径查找。
 
 ### 3.3 文件系统参数与预设 (Presets)
 
@@ -163,11 +163,11 @@ flowchart LR
         EC[ExecutionContext]
         PS[PrivilegedSession]
     end
-    
+
     subgraph ChildProcess["pkexec/sudo steamos-mount-cli daemon"]
         Daemon[CLI Daemon]
     end
-    
+
     EC --> PS
     PS -- "stdin: JSON 请求" --> Daemon
     Daemon -- "stdout: JSON 响应" --> PS
@@ -226,11 +226,12 @@ Daemon 在 Linux 上使用 `prctl(PR_SET_PDEATHSIG, SIGTERM)`，在父进程死�
 1. **握手与密钥交换**：
    - Daemon 在启动时生成 32 字节随机密钥
    - 密钥通过 stdout 发送给父进程（只有父进程持有管道）
-   
 2. **HMAC-SHA256 签名请求**：
+
    ```json
    {"id":1,"hmac":"a1b2c3...","cmd":"exec","program":"mount",...}
    ```
+
    - 签名：`HMAC-SHA256(secret, id || cmd_json)`
    - Daemon 拒绝签名无效的请求
 

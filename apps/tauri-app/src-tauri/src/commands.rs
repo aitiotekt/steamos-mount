@@ -178,6 +178,11 @@ pub async fn mount_device(config: MountConfig) -> Result<MountResult, String> {
         .fstab_spec()
         .ok_or("Could not determine device identifier for fstab")?;
 
+    // Validate that the UUID/PARTUUID path exists
+    device
+        .validate_fstab_spec()
+        .map_err(|e| format!("Device identifier validation failed: {}", e))?;
+
     // Create fstab entry
     let entry = fstab::FstabEntry::new(fs_spec, &mount_point, fs.driver_name(), options, 0, 0);
 

@@ -18,9 +18,9 @@ pub struct BlockDevice {
     pub name: String,
     /// Volume label, if set.
     pub label: Option<String>,
-    /// Filesystem UUID (lowercase).
+    /// Filesystem UUID (case-sensitive, as returned by blkid).
     pub uuid: Option<String>,
-    /// Partition UUID (lowercase).
+    /// Partition UUID (case-sensitive, as returned by blkid).
     pub partuuid: Option<String>,
     /// Filesystem type (e.g., "ntfs", "exfat").
     pub fstype: Option<String>,
@@ -36,16 +36,55 @@ impl BlockDevice {
     /// Returns the device identifier path for fstab.
     ///
     /// Uses UUID by default if available, otherwise PARTUUID.
-    /// Returns the lowercase version for compatibility with `/dev/disk/by-uuid/`.
+    /// UUID and PARTUUID are case-sensitive and must match the values in
+    /// `/dev/disk/by-uuid/` and `/dev/disk/by-partuuid/` respectively.
     pub fn fstab_spec(&self) -> Option<String> {
         self.uuid
             .as_ref()
-            .map(|uuid| format!("UUID={}", uuid.to_lowercase()))
+            .map(|uuid| format!("UUID={}", uuid))
             .or_else(|| {
                 self.partuuid
                     .as_ref()
-                    .map(|partuuid| format!("PARTUUID={}", partuuid.to_lowercase()))
+                    .map(|partuuid| format!("PARTUUID={}", partuuid))
             })
+    }
+
+    /// Validates that the device identifier path exists in the filesystem.
+    ///
+    /// Checks if `/dev/disk/by-uuid/<UUID>` or `/dev/disk/by-partuuid/<PARTUUID>`
+    /// exists, as required for fstab mounting.
+    pub fn validate_fstab_spec(&self) -> Result<()> {
+        use std::path::Path;
+
+        if let Some(uuid) = &self.uuid {
+            let uuid_path = Path::new("/dev/disk/by-uuid").join(uuid);
+            if !uuid_path.exists() {
+                return Err(Error::InvalidUuid {
+                    uuid: format!(
+                        "UUID {} does not exist at {}",
+                        uuid,
+                        uuid_path.display()
+                    ),
+                });
+            }
+        } else if let Some(partuuid) = &self.partuuid {
+            let partuuid_path = Path::new("/dev/disk/by-partuuid").join(partuuid);
+            if !partuuid_path.exists() {
+                return Err(Error::InvalidUuid {
+                    uuid: format!(
+                        "PARTUUID {} does not exist at {}",
+                        partuuid,
+                        partuuid_path.display()
+                    ),
+                });
+            }
+        } else {
+            return Err(Error::InvalidUuid {
+                uuid: "Device has no UUID or PARTUUID".to_string(),
+            });
+        }
+
+        Ok(())
     }
 
     /// Returns a suggested mount point name based on label or UUID.
@@ -171,8 +210,8 @@ fn collect_devices(lsblk_devices: &[LsblkDevice], devices: &mut Vec<BlockDevice>
             devices.push(BlockDevice {
                 name: dev.name.clone(),
                 label: dev.label.clone(),
-                uuid: dev.uuid.as_ref().map(|s| s.to_lowercase()),
-                partuuid: dev.partuuid.as_ref().map(|s| s.to_lowercase()),
+                uuid: dev.uuid.clone(),
+                partuuid: dev.partuuid.clone(),
                 fstype: dev.fstype.clone(),
                 mountpoint: dev.mountpoint.clone(),
                 size: dev.size.unwrap_or(0),
@@ -266,7 +305,7 @@ mod tests {
         // Check NTFS partition
         let ntfs_device = devices.iter().find(|d| d.name == "nvme0n1p2").unwrap();
         assert_eq!(ntfs_device.label, Some("Games".to_string()));
-        assert_eq!(ntfs_device.uuid, Some("aabbccdd11223344".to_string())); // lowercase
+        assert_eq!(ntfs_device.uuid, Some("AABBCCDD11223344".to_string())); // case-sensitive, original case
         assert_eq!(ntfs_device.fstype, Some("ntfs".to_string()));
         assert!(ntfs_device.is_ntfs());
         assert!(ntfs_device.is_mountable());
@@ -306,8 +345,8 @@ mod tests {
             path: PathBuf::from("/dev/sda1"),
         };
 
-        // UUID takes precedence
-        assert_eq!(device.fstab_spec(), Some("UUID=aabb-ccdd".to_string()));
+        // UUID takes precedence, case-sensitive
+        assert_eq!(device.fstab_spec(), Some("UUID=AABB-CCDD".to_string()));
     }
 
     #[test]

@@ -35,7 +35,7 @@ mkdir -p /home/deck/<mount-point>
   - UUID is stored in the filesystem, PARTUUID is stored in the partition table. PARTUUID persists when partition is reformatted, UUID persists when filesystem is moved to another partition.
   - /dev/nvme0n1pX is not persistent; if disk is repartitioned or moved, it changes.
 
-- UUID and PARTUUID must be lowercase, otherwise mount will fail because lookup is done via `/dev/disk/by-uuid` and `/dev/disk/by-partuuid`.
+- UUID and PARTUUID are case-sensitive, default use blkid got value, then must check `/dev/disk/by-uuid/<UUID>` or `/dev/disk/by-partuuid/<PARTUUID>` is exist, otherwise mount will fail because lookup is done via `/dev/disk/by-uuid` and `/dev/disk/by-partuuid`.
 
 ## NTFS and exFAT Configuration
 

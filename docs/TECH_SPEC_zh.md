@@ -35,7 +35,7 @@ mkdir -p /home/deck/<mount-point>
   - UUID 被存储在文件系统中，PARTUUID 被存储在分区表中。PARTUUID 在重新格式化分区时会保留，UUID 在移动文件系统到另一个分区时会保留
   - /dev/nvme0n1pX 不是持久的，如果磁盘重新分区或移动，它会改变
 
-- UUID 和 PARTUUID 必须使用小写，不然会无法挂载，因为是通过 `/dev/disk/by-uuid` 和 `/dev/disk/by-partuuid` 来查找的
+- UUID 和 PARTUUID 大小写敏感，默认使用 blkid 拿到的值，然后必须检查 `/dev/disk/by-uuid/<UUID>` 或者 `/dev/disk/by-partuuid/<PARTUUID>` 是否存在，不然会无法挂载，因为是通过 `/dev/disk/by-uuid` 和 `/dev/disk/by-partuuid` 来查找的
 
 ## NTFS 和 exFAT 配置
 
@@ -81,7 +81,6 @@ mkdir -p /home/deck/<mount-point>
   - 预分配文件空间，避免文件写入时频繁分配空间，提高性能，对于 Steam 大型游戏很有帮助
 
 - `noatime`:
-    
   - `noatime` 是一个常用的挂载选项，用于禁用访问时间更新，减少写入操作，提升性能，特别适合 SSD
 
 **不推荐使用 FAT32**，因为 FAT32 不支持大文件，SteamOS 的游戏文件通常超过 4GB，FAT32 会报错。

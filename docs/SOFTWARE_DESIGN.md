@@ -88,7 +88,7 @@ steamos-mount/
 - **Recommended Strategy**: Provide both UUID and PARTUUID choices, with explanation in UI.
   - **UUID (Default Recommended)**: Bound to filesystem. Invalid after formatting, but persists if partition moves. Suitable for most users.
   - **PARTUUID**: Bound to partition table. Valid even after formatting filesystem (as long as partition isn't deleted). Suitable for advanced users.
-  - **Note**: Must convert to **lowercase** when writing config to be compatible with `/dev/disk/by-uuid/` path lookup.
+  - **Note**: Write config should prioritize blkid got value, and must check `/dev/disk/by-uuid/<UUID>` or `/dev/disk/by-partuuid/<PARTUUID>` is exist, to be compatible with `/dev/disk/by-uuid/` and `/dev/disk/by-partuuid/` path lookup.
 
 ### 3.3 Filesystem Parameters & Presets
 
@@ -163,11 +163,11 @@ flowchart LR
         EC[ExecutionContext]
         PS[PrivilegedSession]
     end
-    
+
     subgraph ChildProcess["pkexec/sudo steamos-mount-cli daemon"]
         Daemon[CLI Daemon]
     end
-    
+
     EC --> PS
     PS -- "stdin: JSON Request" --> Daemon
     Daemon -- "stdout: JSON Response" --> PS
@@ -226,11 +226,12 @@ The daemon uses `prctl(PR_SET_PDEATHSIG, SIGTERM)` on Linux to receive SIGTERM w
 1. **Handshake with Secret Exchange**:
    - Daemon generates a 32-byte random secret on startup
    - Secret is sent to parent via stdout (only parent holds the pipe)
-   
 2. **HMAC-SHA256 Signed Requests**:
+
    ```json
    {"id":1,"hmac":"a1b2c3...","cmd":"exec","program":"mount",...}
    ```
+
    - Signature: `HMAC-SHA256(secret, id || cmd_json)`
    - Daemon rejects requests with invalid signatures
 
