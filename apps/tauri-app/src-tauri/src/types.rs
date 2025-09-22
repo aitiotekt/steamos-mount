@@ -120,26 +120,14 @@ pub struct MountConfig {
     pub device_type: DeviceType,
     /// Custom mount options (only for Custom preset)
     pub custom_options: Option<String>,
-    /// Custom mount point path (optional)
-    pub mount_point: Option<String>,
+    /// Custom mount point path
+    pub mount_point: String,
     /// Whether to force root privileges for mount point creation
     pub force_root_creation: bool,
     /// Whether to inject Steam library
     pub inject_steam: bool,
     /// Steam library path (relative to mount point)
     pub steam_library_path: Option<String>,
-}
-
-/// Mount operation result.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MountResult {
-    /// Whether the operation was successful
-    pub success: bool,
-    /// Mount point path
-    pub mount_point: String,
-    /// Error message (if failed)
-    pub error: Option<String>,
 }
 
 /// Steam injection mode.

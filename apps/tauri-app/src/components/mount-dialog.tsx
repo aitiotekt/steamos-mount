@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useConfirm } from "@/hooks/use-confirm";
 import { toast } from "sonner";
 import { Info } from "lucide-react";
-import type { DeviceInfo, MountConfig, MountResult } from "@/types";
+import type { DeviceInfo, MountConfig } from "@/types";
 
 interface MountSettingsDialogProps {
     device: DeviceInfo | null;
@@ -35,6 +35,11 @@ export function MountSettingsDialog({ device, open, onOpenChange, onSuccess }: M
     const handleMount = async (forceRoot: boolean = false) => {
         if (!device?.uuid) return;
 
+        if (!mountPoint) {
+            toast.error("Mount point is required. Please enter a valid path.");
+            return;
+        }
+
         setLoading(true);
         try {
             const config: MountConfig = {
@@ -47,31 +52,27 @@ export function MountSettingsDialog({ device, open, onOpenChange, onSuccess }: M
                 injectSteam: false,
             };
 
-            const result = await invoke<MountResult>("mount_device", { config });
+            await invoke("mount_device", { config });
 
-            if (result.success) {
-                toast.success(`Successfully mounted to ${result.mountPoint}`);
-                onSuccess();
-                onOpenChange(false);
-            } else {
-                // Check for permission denied error
-                if (result.error && result.error.includes("permission denied creating mount point")) {
-                    const confirmed = await confirm({
-                        title: "Permission Denied",
-                        description: `Failed to create mount point "${mountPoint}" with current permissions. Do you want to try creating it with root privileges (sudo/pkexec)?`,
-                        variant: "default",
-                    });
-
-                    if (confirmed) {
-                        handleMount(true); // Retry with forceRoot
-                        return;
-                    }
-                }
-
-                toast.error(`Mount failed: ${result.error}`);
-            }
+            toast.success(`Successfully mounted to ${mountPoint}`);
+            onSuccess();
+            onOpenChange(false);
         } catch (e) {
-            toast.error(`Error: ${e}`);
+            // Check for permission denied error
+            if (e && (e as string)?.includes("permission denied creating mount point")) {
+                const confirmed = await confirm({
+                    title: "Permission Denied",
+                    description: `Failed to create mount point "${mountPoint}" with current permissions. Do you want to try creating it with root privileges (sudo/pkexec)?`,
+                    variant: "default",
+                });
+
+                if (confirmed) {
+                    handleMount(true); // Retry with forceRoot
+                    return;
+                }
+            }
+
+            toast.error(`Mount failed: ${e}`);
         } finally {
             setLoading(false);
         }

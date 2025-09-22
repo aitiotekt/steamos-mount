@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { RefreshCw, HardDrive, Settings2, AlertCircle } from "lucide-react";
 import { useDevices } from "@/hooks/useDevices";
-import { DeviceCard } from "@/components/DeviceCard";
+import { DeviceCard } from "@/components/device-card";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";

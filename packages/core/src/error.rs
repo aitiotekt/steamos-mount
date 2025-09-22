@@ -123,6 +123,18 @@ pub enum Error {
     #[snafu(display("authentication cancelled by user"))]
     AuthenticationCancelled,
 
+    /// Sidecar binary not found.
+    #[snafu(display(
+        "sidecar binary not found at '{path}'. Please ensure the application is properly installed."
+    ))]
+    SidecarNotFound { path: String },
+
+    /// Privilege escalation tool (pkexec/sudo) not found.
+    #[snafu(display(
+        "privilege escalation tool '{tool}' not found. Please install it to use this feature."
+    ))]
+    EscalationToolNotFound { tool: String },
+
     /// Failed to create privileged session.
     #[snafu(display("failed to create privileged session: {message}"))]
     SessionCreation { message: String },
@@ -130,6 +142,13 @@ pub enum Error {
     /// Failed to communicate with privileged session.
     #[snafu(display("session communication error: {message}"))]
     SessionCommunication { message: String },
+
+    #[snafu(whatever, display("{message}"))]
+    Generic {
+        message: String,
+        #[snafu(source(from(Box<dyn std::error::Error>, Some)))]
+        source: Option<Box<dyn std::error::Error>>,
+    },
 }
 
 /// Extension trait for adding context to io::Error results.

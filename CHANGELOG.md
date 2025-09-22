@@ -13,6 +13,10 @@
 - **Smart Privilege Handling**:
   - Uses `pkexec` strictly when required (e.g., for `mount` syscalls or fstab writes), minimizing root interaction.
   - **Privileged Session Mode**: Single-auth execution for multiple commands via a secure JSON-RPC daemon (HMAC-SHA256 signed).
+  - Each command requires its own authorization (no global session sharing)
+  - Trait-based daemon process abstraction for flexible integration
+  - Lazy daemon initialization - only spawned when first privileged command executes
+  - Unified error handling with user-friendly messages
 
 #### UI/UX (Tauri App)
 - **Device Management**:
@@ -29,6 +33,7 @@
   - Persistent storage of user preferences.
 - **Safety & Polish**:
   - **Unmount Protection**: "Unmount" button is disabled for devices not managed by this application to prevent accidental system modifications.
+  - **Auto Deconfigure**: Unmounting a device automatically removes its managed fstab entry
   - **Responsive Design**: Unified card layout with bottom-aligned actions for a consistent look.
   - **Visual Feedback**: Toast notifications for operations and detailed error reporting.
   - **Dark Mode**: Fully supported UI with adaptative colors.
@@ -37,3 +42,14 @@
 - **Arch Linux Support**:
   - Fix AppImage bundling on Arch Linux using experimental Tauri CLI branch (`feat/truly-portable-appimage`).
   - Add `just prepare-on-archlinux` helper to install build dependencies (`patchelf`, `squashfs-tools`, etc).
+- **Tauri Sidecar Integration**:
+  - Improved sidecar binary path resolution and error handling
+  - Better error messages when sidecar binary is missing or corrupted
+
+### Changed
+
+#### Core & Backend
+- **Code Quality**:
+  - Added unified command wrapper functions for consistent error handling
+  - Extracted shared deconfigure logic to eliminate code duplication
+  - Improved error messages for missing sidecar, missing escalation tools, and authentication cancellation

@@ -71,6 +71,12 @@ jobs:
             --branch feat/truly-portable-appimage \
             --force
 
+      - name: Build CLI binary
+        run: |
+          # Build CLI binary before Tauri build for better error handling
+          # Rust cache handles incremental builds efficiently
+          cargo build --release --bin steamos-mount-cli
+
       - name: Build and Release
         uses: tauri-apps/tauri-action@390cbe447412ced1303d35abe75287949e43437a
         env:

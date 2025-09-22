@@ -60,7 +60,10 @@ pub mod syscall;
 // Re-export commonly used types
 pub use disk::BlockDevice;
 pub use error::{Error, Result};
-pub use executor::{ExecutionContext, PrivilegeEscalation};
+pub use executor::{
+    DaemonChild, DaemonSpawner, ExecutionContext, PrivilegeEscalation, PrivilegedSession,
+    StdDaemonChild, StdDaemonSpawner,
+};
 pub use fstab::FstabEntry;
 pub use preset::{MountPreset, PresetConfig};
 pub use steam::LibraryFolder;

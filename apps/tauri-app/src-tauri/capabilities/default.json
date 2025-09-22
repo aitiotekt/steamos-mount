@@ -9,6 +9,21 @@
     "core:default",
     "opener:default",
     "store:default",
-    "dialog:default"
+    "dialog:default",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "pkexec",
+          "args": true,
+          "sidecar": false
+        },
+        {
+          "name": "sudo",
+          "args": true,
+          "sidecar": false
+        }
+      ]
+    }
   ]
 }

@@ -25,16 +25,10 @@ export interface MountConfig {
     mediaType: "flash" | "rotational";
     deviceType: "fixed" | "removable";
     customOptions?: string;
-    mountPoint?: string;
+    mountPoint: string;
     forceRootCreation: boolean;
     injectSteam: boolean;
     steamLibraryPath?: string;
-}
-
-export interface MountResult {
-    success: boolean;
-    mountPoint: string;
-    error: string | null;
 }
 
 export interface SteamInjectionConfig {
