@@ -14,9 +14,9 @@ use crate::types::{
     SteamInjectionConfig, SteamInjectionMode,
 };
 
-/// Creates an execution context with pkexec for GUI privilege escalation.
+/// Creates an execution context with pkexec session for GUI privilege escalation.
 fn gui_context() -> ExecutionContext {
-    ExecutionContext::with_pkexec()
+    ExecutionContext::with_pkexec_session()
 }
 
 /// Lists all mountable devices (NTFS/exFAT partitions).
@@ -231,6 +231,53 @@ pub async fn unmount_device(mount_point: String) -> Result<(), String> {
     let mut ctx = gui_context();
     let path = std::path::PathBuf::from(&mount_point);
     mount::unmount_device_with_ctx(&path, &mut ctx).map_err(|e| e.to_string())
+}
+
+/// Removes the fstab configuration for a device (deconfigure).
+#[command]
+#[allow(dead_code)] // Used by Tauri invoke handler
+pub async fn deconfigure_device(uuid: String) -> Result<(), String> {
+    let mut ctx = gui_context();
+
+    // Find the device by UUID
+    let devices = disk::list_block_devices().map_err(|e| e.to_string())?;
+    let device = devices
+        .iter()
+        .find(|d| d.uuid.as_ref() == Some(&uuid))
+        .ok_or_else(|| format!("Device with UUID {} not found", uuid))?;
+
+    // Read current fstab entries
+    let fstab_path = std::path::Path::new(fstab::FSTAB_PATH);
+    let parsed = fstab::parse_fstab(fstab_path).map_err(|e| e.to_string())?;
+
+    // Find the entry matching this device
+    let entry_to_remove = parsed
+        .managed_entries
+        .iter()
+        .find(|e| device_matches_entry(device, e));
+
+    if entry_to_remove.is_none() {
+        return Err("Device is not configured in fstab".to_string());
+    }
+
+    // Filter out the entry to remove
+    let remaining_entries: Vec<fstab::FstabEntry> = parsed
+        .managed_entries
+        .into_iter()
+        .filter(|e| !device_matches_entry(device, e))
+        .collect();
+
+    // Backup fstab with privilege escalation
+    fstab::backup_fstab_with_ctx(fstab_path, &mut ctx).map_err(|e| e.to_string())?;
+
+    // Write remaining entries with privilege escalation
+    fstab::write_managed_entries_with_ctx(fstab_path, &remaining_entries, &mut ctx)
+        .map_err(|e| e.to_string())?;
+
+    // Reload systemd daemon
+    mount::reload_systemd_daemon_with_ctx(&mut ctx).map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 /// Checks if a device has a dirty NTFS volume.

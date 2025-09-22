@@ -73,6 +73,27 @@ function App() {
     }
   };
 
+  const handleDeconfigure = async (device: DeviceInfo) => {
+    if (!device.uuid) return;
+
+    // Use the global confirm dialog
+    const confirmed = await confirm({
+      title: "Confirm Deconfigure",
+      description: `Are you sure you want to remove the fstab configuration for ${device.label || device.name}? This will remove the auto-mount entry but will not unmount the device if it's currently mounted.`,
+      variant: "default",
+    });
+
+    if (!confirmed) return;
+
+    try {
+      await invoke("deconfigure_device", { uuid: device.uuid });
+      toast.success("Device configuration removed successfully");
+      refresh();
+    } catch (e) {
+      toast.error(`Deconfigure failed: ${e}`);
+    }
+  };
+
   const handleConfigureSteam = async (device: DeviceInfo) => {
     if (!device.mountpoint) return;
 
@@ -183,6 +204,7 @@ function App() {
                   steamLibraries={steamState?.libraries}
                   onMount={handleMountClick}
                   onUnmount={handleUnmount}
+                  onDeconfigure={handleDeconfigure}
                   onRepair={handleRepair}
                   onConfigureSteam={handleConfigureSteam}
                 />

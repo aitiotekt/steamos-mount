@@ -1,4 +1,4 @@
-import { HardDrive, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Gamepad2 } from "lucide-react";
+import { HardDrive, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Gamepad2, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ interface DeviceCardProps {
     steamLibraries?: string[];
     onMount?: (device: DeviceInfo) => void;
     onUnmount?: (device: DeviceInfo) => void;
+    onDeconfigure?: (device: DeviceInfo) => void;
     onRepair?: (device: DeviceInfo) => void;
     onConfigureSteam?: (device: DeviceInfo) => void;
 }
@@ -21,6 +22,7 @@ export function DeviceCard({
     steamLibraries,
     onMount,
     onUnmount,
+    onDeconfigure,
     onRepair,
     onConfigureSteam,
 }: DeviceCardProps) {
@@ -140,6 +142,17 @@ export function DeviceCard({
                         >
                             <Gamepad2 className="h-4 w-4 mr-1" />
                             Configure Steam Library
+                        </Button>
+                    )}
+                    {device.managedEntry && !device.isMounted && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                            onClick={() => onDeconfigure?.(device)}
+                        >
+                            <X className="h-4 w-4 mr-1" />
+                            Deconfigure Fstab Entry
                         </Button>
                     )}
 
