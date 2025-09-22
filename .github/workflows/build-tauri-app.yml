@@ -16,7 +16,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-      
+
       - name: Checkout repository
         uses: actions/checkout@v6
 
@@ -24,24 +24,24 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: 10.28.0
-      
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
-      
+
       - name: Install dependencies
         run: cd apps/tauri-app && pnpm install
-          
+
       - name: install Rust Nightly
         uses: dtolnay/rust-toolchain@nightly
-      
+
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-           workspaces: |
-             apps/tauri-app/src-tauri -> target 
+          workspaces: |
+            apps/tauri-app/src-tauri -> target
 
       - name: Get App Version
         id: get_version
@@ -58,8 +58,10 @@ jobs:
         id: cache-tauri
         uses: actions/cache@v4
         with:
-          path: ~/.cargo/bin/tauri
+          path: ~/.cargo/bin
           key: ${{ runner.os }}-tauri-cli-experimental-v1
+          restore-keys: |
+            ${{ runner.os }}-tauri-cli-experimental-v1
 
       - name: Install Tauri CLI (Experimental AppImage)
         if: steps.cache-tauri.outputs.cache-hit != 'true'
@@ -78,7 +80,7 @@ jobs:
           projectPath: "./apps/tauri-app"
           tagName: app-v__VERSION__
           releaseName: "App v__VERSION__"
-          releaseBody: 'See the assets to download this version and install.'
+          releaseBody: "See the assets to download this version and install."
           releaseDraft: true
           prerelease: ${{ steps.get_version.outputs.prerelease }}
           tauriScript: "cargo tauri"
