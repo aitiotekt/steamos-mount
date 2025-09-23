@@ -41,7 +41,7 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: |
-            apps/tauri-app/src-tauri -> target
+            . -> target
 
       - name: Get App Version
         id: get_version
