@@ -10,18 +10,16 @@
 //! when it needs to perform privileged actions.
 use std::io::Write;
 use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
 
 use snafu::{OptionExt, ResultExt};
-use tauri::command;
-use tauri::path::BaseDirectory;
 use tauri::AppHandle;
-use tauri::Manager;
+use tauri::{command, Manager};
 
 use steamos_mount_core::{
     disk, fstab, mount, preset, steam, DaemonChild, DaemonSpawner, ExecutionContext,
     PrivilegeEscalation, StdDaemonChild,
 };
+use tauri::path::BaseDirectory;
 
 use crate::types::{
     DeviceInfo, ManagedEntryInfo, MountConfig, PresetInfo, PresetType, SteamInjectionConfig,
@@ -47,14 +45,16 @@ impl TauriPkexecSpawner {
         let target_triple = tauri::utils::platform::target_triple()
             .with_whatever_context(|e| format!("Failed to get target triple: {}", e))?;
         let exe_suffix = std::env::consts::EXE_SUFFIX;
-        // real sidecar do not support resolve path now, use resource to simulate it
         let sidecar_rel_path = format!("bin/steamos-mount-cli-{}{}", target_triple, exe_suffix);
 
         let sidecar_path = app
             .path()
-            .resolve(&sidecar_rel_path, BaseDirectory::Resource)
-            .map_err(|_| steamos_mount_core::Error::SidecarNotFound {
-                path: sidecar_rel_path.clone(),
+            .resolve(&sidecar_rel_path, BaseDirectory::AppData)
+            .with_whatever_context(|e| {
+                format!(
+                    "Failed to resolve sidecar path of '{}': {}",
+                    &sidecar_rel_path, e
+                )
             })?;
 
         Ok(Self {
@@ -71,11 +71,6 @@ impl DaemonSpawner for TauriPkexecSpawner {
                 path: self.sidecar_path.clone(),
             });
         }
-
-        println!(
-            "debug => Sidecar path exists: {}",
-            std::path::Path::new(&self.sidecar_path).exists()
-        );
 
         // Check if pkexec exists
         if Command::new("pkexec")
@@ -174,9 +169,7 @@ fn error_to_user_message(error: &steamos_mount_core::Error) -> String {
 ///
 /// Returns a new execution context.
 /// Errors are returned as core errors for unified error handling.
-fn create_privileged_context(
-    app: &AppHandle,
-) -> steamos_mount_core::Result<Arc<Mutex<ExecutionContext>>> {
+fn create_privileged_context(app: &AppHandle) -> steamos_mount_core::Result<ExecutionContext> {
     // Create spawner for lazy session creation
     let spawner = TauriPkexecSpawner::new(app)
         .with_whatever_context(|e| format!("Failed to create spawner: {}", e))?;
@@ -185,9 +178,7 @@ fn create_privileged_context(
     // The session will be created lazily when first needed
     let ctx = ExecutionContext::with_spawner(PrivilegeEscalation::PkexecSession, Box::new(spawner));
 
-    // Return a new context (not shared)
-    let ctx_arc = Arc::new(Mutex::new(ctx));
-    Ok(ctx_arc)
+    Ok(ctx)
 }
 
 /// Creates a new non-privileged execution context.
@@ -195,10 +186,9 @@ fn create_privileged_context(
 /// This function creates a new default ExecutionContext without privilege escalation.
 /// Each call creates a new context instance.
 /// Errors are returned as core errors for unified error handling.
-fn get_non_privileged_context() -> steamos_mount_core::Result<Arc<Mutex<ExecutionContext>>> {
+fn get_non_privileged_context() -> steamos_mount_core::Result<ExecutionContext> {
     let ctx = ExecutionContext::default();
-    let ctx_arc = Arc::new(Mutex::new(ctx));
-    Ok(ctx_arc)
+    Ok(ctx)
 }
 
 /// Executes a command that requires privilege escalation context,
@@ -235,28 +225,13 @@ where
     F: FnOnce(&mut ExecutionContext, &mut ExecutionContext) -> steamos_mount_core::Result<T>,
 {
     // Create a new privileged context for this command (each command requires its own authorization)
-    let privileged_ctx_arc =
+    let mut privileged_ctx =
         create_privileged_context(app).map_err(|e| error_to_user_message(&e))?;
-    let non_privileged_ctx_arc =
+    let mut non_privileged_ctx =
         get_non_privileged_context().map_err(|e| error_to_user_message(&e))?;
 
-    // Lock the context for thread-safe access
-    let mut priviledged_ctx = privileged_ctx_arc
-        .lock()
-        .map_err(|e| steamos_mount_core::error::Error::SessionCreation {
-            message: format!("Failed to lock privileged context: {}", e),
-        })
-        .map_err(|e| error_to_user_message(&e))?;
-
-    let mut non_privileged_ctx = non_privileged_ctx_arc
-        .lock()
-        .map_err(|e| steamos_mount_core::error::Error::SessionCreation {
-            message: format!("Failed to lock non-privileged context: {}", e),
-        })
-        .map_err(|e| error_to_user_message(&e))?;
-
     // Execute the command implementation and convert errors
-    command_impl(&mut priviledged_ctx, &mut non_privileged_ctx)
+    command_impl(&mut privileged_ctx, &mut non_privileged_ctx)
         .map_err(|e| error_to_user_message(&e))
 }
 
@@ -287,15 +262,7 @@ where
     F: FnOnce(&mut ExecutionContext) -> steamos_mount_core::Result<T>,
 {
     // Get or create non-privileged context
-    let ctx_arc = get_non_privileged_context().map_err(|e| error_to_user_message(&e))?;
-
-    // Lock the context for thread-safe access
-    let mut ctx = ctx_arc
-        .lock()
-        .map_err(|e| steamos_mount_core::error::Error::SessionCreation {
-            message: format!("Failed to lock context: {}", e),
-        })
-        .map_err(|e| error_to_user_message(&e))?;
+    let mut ctx = get_non_privileged_context().map_err(|e| error_to_user_message(&e))?;
 
     // Execute the command implementation and convert errors
     command_impl(&mut ctx).map_err(|e| error_to_user_message(&e))

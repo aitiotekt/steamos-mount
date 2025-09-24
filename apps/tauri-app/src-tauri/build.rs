@@ -9,7 +9,6 @@ fn main() {
         .expect("CARGO_CFG_TARGET_OS environment variable is not set");
     let target_triple = env::var("TARGET").expect("TARGET environment variable is not set");
     let exe_suffix = if target_os == "windows" { ".exe" } else { "" };
-    // can not resolve path in sidecar now, use resource to simulate it
     let tauri_sidecar_binary_name = format!("steamos-mount-cli-{}{}", target_triple, exe_suffix);
     let target_binary_name = format!("steamos-mount-cli{}", exe_suffix);
 
