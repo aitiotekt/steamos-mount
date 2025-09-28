@@ -13,11 +13,11 @@ use std::process::{Command, Stdio};
 
 use snafu::{OptionExt, ResultExt};
 use tauri::AppHandle;
-use tauri::{command, Manager};
+use tauri::{Manager, command};
 
 use steamos_mount_core::{
-    disk, fstab, mount, preset, steam, DaemonChild, DaemonSpawner, ExecutionContext,
-    PrivilegeEscalation, StdDaemonChild,
+    DaemonChild, DaemonSpawner, ExecutionContext, PrivilegeEscalation, StdDaemonChild, disk, fstab,
+    mount, preset, steam,
 };
 use tauri::path::BaseDirectory;
 
@@ -41,24 +41,80 @@ struct TauriPkexecSpawner {
 impl TauriPkexecSpawner {
     /// Creates a new TauriPkexecSpawner from an AppHandle.
     fn new(app: &AppHandle) -> Result<Self, steamos_mount_core::Error> {
+        use std::fs;
         // Resolve sidecar path using Tauri's resource system
         let target_triple = tauri::utils::platform::target_triple()
             .with_whatever_context(|e| format!("Failed to get target triple: {}", e))?;
         let exe_suffix = std::env::consts::EXE_SUFFIX;
-        let sidecar_rel_path = format!("bin/steamos-mount-cli-{}{}", target_triple, exe_suffix);
-
-        let sidecar_path = app
+        let sidecar_rel_name = format!("bin/steamos-mount-cli-{}{}", target_triple, exe_suffix);
+        let sidecar_resource_path = app
             .path()
-            .resolve(&sidecar_rel_path, BaseDirectory::AppData)
+            .resolve(&sidecar_rel_name, BaseDirectory::Resource)
             .with_whatever_context(|e| {
                 format!(
-                    "Failed to resolve sidecar path of '{}': {}",
-                    &sidecar_rel_path, e
+                    "Failed to resolve resource path of '{}': {}",
+                    &sidecar_rel_name, e
+                )
+            })?;
+        let sidecar_appdata_path = app
+            .path()
+            .resolve(&sidecar_rel_name, BaseDirectory::AppData)
+            .with_whatever_context(|e| {
+                format!(
+                    "Failed to resolve appdata path of '{}': {}",
+                    &sidecar_rel_name, e
                 )
             })?;
 
+        if !sidecar_appdata_path.exists() {
+            if !sidecar_resource_path.exists() {
+                return Err(steamos_mount_core::Error::SidecarNotFound {
+                    path: sidecar_resource_path.to_string_lossy().to_string(),
+                });
+            }
+
+            if let Some(sidecar_appdata_dir) = sidecar_appdata_path.parent()
+                && !sidecar_appdata_dir.exists()
+            {
+                fs::create_dir_all(sidecar_appdata_dir).with_whatever_context(|e| {
+                    format!(
+                        "Failed to create directory '{}': {}",
+                        sidecar_appdata_dir.display(),
+                        e
+                    )
+                })?;
+            }
+
+            fs::copy(&sidecar_resource_path, &sidecar_appdata_path).with_whatever_context(|e| {
+                format!("Failed to copy sidecar from resource to appdata: {}", e)
+            })?;
+        }
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let mut perms = fs::metadata(&sidecar_appdata_path)
+                .with_whatever_context(|e| {
+                    format!(
+                        "Failed to get metadata of '{}': {}",
+                        sidecar_appdata_path.display(),
+                        e
+                    )
+                })?
+                .permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&sidecar_appdata_path, perms).with_whatever_context(|e| {
+                format!(
+                    "Failed to set permissions of '{}': {}",
+                    sidecar_appdata_path.display(),
+                    e
+                )
+            })?;
+        }
+
         Ok(Self {
-            sidecar_path: sidecar_path.to_string_lossy().to_string(),
+            sidecar_path: sidecar_appdata_path.to_string_lossy().to_string(),
         })
     }
 }
@@ -465,14 +521,14 @@ pub async fn mount_device(app: AppHandle, config: MountConfig) -> Result<(), Str
             .with_whatever_context(|| format!("Device with UUID {} not found", device_uuid))?;
 
         // Check for dirty volume first
-        if device.is_ntfs() && !device.is_mounted() {
-            if let Ok(is_dirty) = mount::detect_dirty_volume_with_ctx(device, ctx) {
-                if is_dirty {
-                    return Err(steamos_mount_core::Error::DirtyVolume {
-                        device: device.path.display().to_string(),
-                    });
-                }
-            }
+        if device.is_ntfs()
+            && !device.is_mounted()
+            && let Ok(is_dirty) = mount::detect_dirty_volume_with_ctx(device, ctx)
+            && is_dirty
+        {
+            return Err(steamos_mount_core::Error::DirtyVolume {
+                device: device.path.display().to_string(),
+            });
         }
 
         // Create mount point with smart privilege handling
