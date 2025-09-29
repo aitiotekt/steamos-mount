@@ -89,5 +89,5 @@ jobs:
           releaseBody: "See the assets to download this version and install."
           releaseDraft: true
           prerelease: ${{ steps.get_version.outputs.prerelease }}
-          tauriScript: "pnpm tauri"
+          tauriScript: "cargo tauri"
           args: --target x86_64-unknown-linux-gnu
