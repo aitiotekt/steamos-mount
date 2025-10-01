@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.1]
+
+### Fixed
+
+#### Core & Backend
+- **Authentication Cancellation**: Fixed issue where cancelling pkexec dialog during mount operation would trigger a second authentication prompt. Now properly propagates `AuthenticationCancelled` error on first cancellation.
+
+#### UI/UX (Tauri App)
+- **Error Handling**: Improved error message handling in mount dialog for better user experience when authentication is cancelled.
+
 ## [0.1.0]
 
 ### Added

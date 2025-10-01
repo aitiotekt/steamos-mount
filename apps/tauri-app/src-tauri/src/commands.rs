@@ -521,14 +521,13 @@ pub async fn mount_device(app: AppHandle, config: MountConfig) -> Result<(), Str
             .with_whatever_context(|| format!("Device with UUID {} not found", device_uuid))?;
 
         // Check for dirty volume first
-        if device.is_ntfs()
-            && !device.is_mounted()
-            && let Ok(is_dirty) = mount::detect_dirty_volume_with_ctx(device, ctx)
-            && is_dirty
-        {
-            return Err(steamos_mount_core::Error::DirtyVolume {
-                device: device.path.display().to_string(),
-            });
+        if device.is_ntfs() && !device.is_mounted() {
+            let is_dirty = mount::detect_dirty_volume_with_ctx(device, ctx)?;
+            if is_dirty {
+                return Err(steamos_mount_core::Error::DirtyVolume {
+                    device: device.path.display().to_string(),
+                });
+            }
         }
 
         // Create mount point with smart privilege handling

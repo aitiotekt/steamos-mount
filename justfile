@@ -12,3 +12,6 @@ prepare-on-archlinux:
 
 build-tauri-app-on-archlinux:
     cd apps/tauri-app && TAURI_BUNDLER_NEW_APPIMAGE_FORMAT=true NO_STRIP=true cargo tauri build
+
+build-tauri-app-on-archlinux-legacy:
+    cd apps/tauri-app && NO_STRIP=true cargo tauri build

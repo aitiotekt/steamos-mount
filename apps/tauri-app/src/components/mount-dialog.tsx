@@ -58,8 +58,10 @@ export function MountSettingsDialog({ device, open, onOpenChange, onSuccess }: M
             onSuccess();
             onOpenChange(false);
         } catch (e) {
+            const errorMessage = String(e || "");
+
             // Check for permission denied error
-            if (e && (e as string)?.includes("permission denied creating mount point")) {
+            if (errorMessage.includes("permission denied creating mount point")) {
                 const confirmed = await confirm({
                     title: "Permission Denied",
                     description: `Failed to create mount point "${mountPoint}" with current permissions. Do you want to try creating it with root privileges (sudo/pkexec)?`,
@@ -68,11 +70,11 @@ export function MountSettingsDialog({ device, open, onOpenChange, onSuccess }: M
 
                 if (confirmed) {
                     handleMount(true); // Retry with forceRoot
-                    return;
                 }
+                return;
             }
 
-            toast.error(`Mount failed: ${e}`);
+            toast.error(`Mount failed: ${errorMessage}`);
         } finally {
             setLoading(false);
         }

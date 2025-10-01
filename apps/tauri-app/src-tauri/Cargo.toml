@@ -1,6 +1,6 @@
 [package]
 name = "steamos-mount-tauri"
-version = "0.1.0"
+version = "0.1.1"
 description = "A Tauri App for managing NTFS/exFAT drive mounts on SteamOS."
 authors = ["Aitiotekt <root@aitiotekt.com>"]
 edition = "2024"
