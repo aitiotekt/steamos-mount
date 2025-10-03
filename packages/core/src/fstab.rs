@@ -23,6 +23,8 @@ const MANAGED_BLOCK_COMMENT: &str =
 
 /// Default fstab path.
 pub const FSTAB_PATH: &str = "/etc/fstab";
+const BACKUP_SUFFIX: &str = "backup.steamos-mount";
+const MAX_BACKUPS: usize = 5;
 
 pub trait IntoMountOptions {
     fn into(self) -> Vec<String>;
@@ -250,28 +252,16 @@ pub fn parse_fstab(path: &Path) -> Result<ParsedFstab> {
     Ok(result)
 }
 
-/// Creates a timestamped backup of the fstab file.
-///
-/// Returns the path to the backup file.
-pub fn backup_fstab(path: &Path) -> Result<PathBuf> {
-    let timestamp = chrono_lite_timestamp();
-    let backup_name = format!("{}.backup.{}", path.display(), timestamp);
-    let backup_path = PathBuf::from(&backup_name);
-
-    fs::copy(path, &backup_path).backup_context(&backup_path)?;
-
-    Ok(backup_path)
-}
-
 /// Creates a timestamped backup with privilege escalation support.
 pub fn backup_fstab_with_ctx(
     path: &Path,
     ctx: &mut crate::executor::ExecutionContext,
 ) -> Result<PathBuf> {
     let timestamp = chrono_lite_timestamp();
-    let backup_name = format!("{}.backup.{}", path.display(), timestamp);
+    let backup_name = format!("{}.{}.{}", path.display(), BACKUP_SUFFIX, timestamp);
 
     ctx.copy_file_privileged(&path.display().to_string(), &backup_name)?;
+    prune_backups_with_ctx(path, MAX_BACKUPS, ctx)?;
 
     Ok(PathBuf::from(backup_name))
 }
@@ -287,22 +277,6 @@ fn chrono_lite_timestamp() -> String {
     format!("{}", duration.as_secs())
 }
 
-/// Writes managed entries to the fstab file.
-///
-/// This function:
-/// 1. Reads the existing fstab
-/// 2. Removes any existing managed block
-/// 3. Appends the new managed block with the provided entries
-///
-/// The operation is idempotent - running it multiple times with the same
-/// entries produces the same result.
-pub fn write_managed_entries(path: &Path, entries: &[FstabEntry]) -> Result<()> {
-    let content = fs::read_to_string(path).fstab_read_context(path)?;
-    let new_content = update_managed_entries_content(&content, entries)?;
-    fs::write(path, new_content).fstab_write_context(path)?;
-    Ok(())
-}
-
 /// Writes managed entries to fstab with privilege escalation support.
 ///
 /// This version uses the provided `ExecutionContext` to write the file
@@ -316,6 +290,65 @@ pub fn write_managed_entries_with_ctx(
     let new_content = update_managed_entries_content(&content, entries)?;
     ctx.write_file_privileged(&path.display().to_string(), &new_content)?;
     Ok(())
+}
+
+/// Adds managed entries to fstab with privilege escalation support.
+///
+/// This merges new entries into the existing managed block, replacing
+/// entries that target the same device or mount point.
+pub fn add_managed_entries_with_ctx(
+    path: &Path,
+    entries: &[FstabEntry],
+    ctx: &mut crate::executor::ExecutionContext,
+) -> Result<()> {
+    let parsed = parse_fstab(path)?;
+    let mut merged = parsed.managed_entries;
+
+    for entry in entries {
+        if let Some(pos) = merged
+            .iter()
+            .position(|e| e.mount_point == entry.mount_point || e.fs_spec == entry.fs_spec)
+        {
+            merged[pos] = entry.clone();
+        } else {
+            merged.push(entry.clone());
+        }
+    }
+
+    write_managed_entries_with_ctx(path, &merged, ctx)
+}
+
+/// Removes managed entries from fstab with privilege escalation support.
+///
+/// The filter returns true for entries that should be removed.
+pub fn remove_managed_entries_with_ctx<F>(
+    path: &Path,
+    ctx: &mut crate::executor::ExecutionContext,
+    mut filter: F,
+) -> Result<usize>
+where
+    F: FnMut(&FstabEntry) -> bool,
+{
+    let parsed = parse_fstab(path)?;
+    let mut removed = 0usize;
+    let remaining: Vec<FstabEntry> = parsed
+        .managed_entries
+        .into_iter()
+        .filter(|entry| {
+            if filter(entry) {
+                removed += 1;
+                false
+            } else {
+                true
+            }
+        })
+        .collect();
+
+    if removed > 0 {
+        write_managed_entries_with_ctx(path, &remaining, ctx)?;
+    }
+
+    Ok(removed)
 }
 
 /// Updates managed entries in fstab content string.
@@ -387,6 +420,44 @@ pub fn update_managed_entries_content(content: &str, entries: &[FstabEntry]) -> 
     }
 
     Ok(output)
+}
+
+fn prune_backups_with_ctx(
+    path: &Path,
+    keep: usize,
+    ctx: &mut crate::executor::ExecutionContext,
+) -> Result<()> {
+    let dir = match path.parent() {
+        Some(parent) => parent,
+        None => return Ok(()),
+    };
+
+    let file_name = match path.file_name().and_then(|name| name.to_str()) {
+        Some(name) => name,
+        None => return Ok(()),
+    };
+
+    let prefix = format!("{}.{}.", file_name, BACKUP_SUFFIX);
+    let mut backups = Vec::new();
+
+    for entry in fs::read_dir(dir).backup_context(dir.to_path_buf())? {
+        let entry = entry.backup_context(dir.to_path_buf())?;
+        let file_name = entry.file_name();
+        let name = file_name.to_string_lossy();
+        if let Some(timestamp_str) = name.strip_prefix(&prefix)
+            && let Ok(timestamp) = timestamp_str.parse::<u64>()
+        {
+            backups.push((timestamp, entry.path()));
+        }
+    }
+
+    backups.sort_by(|a, b| b.0.cmp(&a.0));
+
+    for (_, backup_path) in backups.into_iter().skip(keep) {
+        ctx.run_privileged_checked("rm", &[&backup_path.display().to_string()])?;
+    }
+
+    Ok(())
 }
 
 /// Returns the default mount base path.
@@ -496,6 +567,7 @@ UUID=custom  /mnt/custom  ext4  defaults  0  0
     fn test_write_managed_entries_idempotent() {
         let mut temp_file = NamedTempFile::new().unwrap();
         temp_file.write_all(SAMPLE_FSTAB.as_bytes()).unwrap();
+        let mut ctx = crate::executor::ExecutionContext::default();
 
         let entries = vec![FstabEntry::new(
             "UUID=new-entry",
@@ -507,7 +579,7 @@ UUID=custom  /mnt/custom  ext4  defaults  0  0
         )];
 
         // Write entries
-        write_managed_entries(temp_file.path(), &entries).unwrap();
+        write_managed_entries_with_ctx(temp_file.path(), &entries, &mut ctx).unwrap();
 
         // Parse again
         let parsed = parse_fstab(temp_file.path()).unwrap();
@@ -515,7 +587,7 @@ UUID=custom  /mnt/custom  ext4  defaults  0  0
         assert_eq!(parsed.managed_entries[0].fs_spec, "UUID=new-entry");
 
         // Write same entries again (idempotent)
-        write_managed_entries(temp_file.path(), &entries).unwrap();
+        write_managed_entries_with_ctx(temp_file.path(), &entries, &mut ctx).unwrap();
 
         let parsed2 = parse_fstab(temp_file.path()).unwrap();
         assert_eq!(parsed2.managed_entries.len(), 1);

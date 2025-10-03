@@ -410,18 +410,13 @@ fn deconfigure_device_internal(
         .find(|e| device_matches_entry(device, e))
         .whatever_context("Device is not configured in fstab")?;
 
-    // Filter out the entry to remove
-    let remaining_entries: Vec<fstab::FstabEntry> = parsed
-        .managed_entries
-        .into_iter()
-        .filter(|e| !device_matches_entry(device, e))
-        .collect();
-
     // Backup fstab with privilege escalation
     fstab::backup_fstab_with_ctx(fstab_path, ctx)?;
 
-    // Write remaining entries with privilege escalation
-    fstab::write_managed_entries_with_ctx(fstab_path, &remaining_entries, ctx)?;
+    // Remove matching entries with privilege escalation
+    fstab::remove_managed_entries_with_ctx(fstab_path, ctx, |entry| {
+        device_matches_entry(device, entry)
+    })?;
 
     // Reload systemd daemon
     mount::reload_systemd_daemon_with_ctx(ctx)?;
@@ -538,7 +533,7 @@ pub async fn mount_device(app: AppHandle, config: MountConfig) -> Result<(), Str
         fstab::backup_fstab_with_ctx(fstab_path, ctx)?;
 
         // Write fstab with privilege escalation
-        fstab::write_managed_entries_with_ctx(fstab_path, &[entry], ctx)?;
+        fstab::add_managed_entries_with_ctx(fstab_path, &[entry], ctx)?;
 
         // Reload systemd daemon
         mount::reload_systemd_daemon_with_ctx(ctx)?;

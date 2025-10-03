@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.2
+
+### Fixed
+
+#### Core & Backend
+- **Managed Entry Writes**: Preserve existing managed fstab entries when adding new ones instead of overwriting the entire block.
+- **Deconfigure Filtering**: Centralized managed-entry removal logic to avoid inconsistent filters.
+- **Fstab Backups**: Keep only the latest 5 backups using `.backup.steamos-mount.<timestamp>` naming.
+
 ## 0.1.1
 
 ### Fixed

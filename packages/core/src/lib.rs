@@ -42,8 +42,10 @@
 //!     );
 //!
 //!     // This would update fstab (requires root):
-//!     // fstab::backup_fstab(Path::new("/etc/fstab")).unwrap();
-//!     // fstab::write_managed_entries(Path::new("/etc/fstab"), &[entry]).unwrap();
+//!     // let mut ctx = ExecutionContext::with_sudo();
+//!     // let fstab_path = Path::new("/etc/fstab");
+//!     // fstab::backup_fstab_with_ctx(fstab_path, &mut ctx).unwrap();
+//!     // fstab::write_managed_entries_with_ctx(fstab_path, &[entry], &mut ctx).unwrap();
 //! }
 //! ```
 
