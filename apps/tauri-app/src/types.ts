@@ -16,6 +16,7 @@ export interface DeviceInfo {
     mountpoint: string | null;
     isMounted: boolean;
     isDirty: boolean;
+    isOffline: boolean;
     managedEntry?: ManagedEntryInfo;
 }
 

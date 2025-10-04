@@ -60,7 +60,10 @@ pub mod steam;
 pub mod syscall;
 
 // Re-export commonly used types
-pub use disk::BlockDevice;
+pub use disk::{
+    BlockDevice, ManagedDevice, ManagedDevicesResult, OfflineDevice, normalize_fstype,
+    vfs_type_to_fstype,
+};
 pub use error::{Error, Result};
 pub use executor::{
     DaemonChild, DaemonSpawner, ExecutionContext, PrivilegeEscalation, PrivilegedSession,

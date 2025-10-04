@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.3
+
+### Added
+
+#### Core & Backend
+- **Offline Managed Devices**: Added `OfflineDevice`, `ManagedDevice`, and `list_managed_devices()` to `steamos-mount-core` for listing devices that are configured in fstab but not currently connected.
+- **Deconfigure Offline Devices**: New `deconfigure_offline_device` command to remove fstab entries for offline devices.
+
+#### UI/UX (Tauri App)
+- **Offline Device Display**: First screen now shows offline managed devices (from fstab) alongside online devices, making it easier to manage removable drives that aren't currently connected.
+- **Offline Device Actions**: Offline devices support "Deconfigure" to remove fstab entry, and can open Steam storage settings (to remove the library if needed).
+
+---
+
 ## 0.1.2
 
 ### Fixed

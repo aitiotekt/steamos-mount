@@ -3,6 +3,9 @@
     "references": [
         {
             "path": "./apps/tauri-app/tsconfig.json"
+        },
+        {
+            "path": "./scripts/tsconfig.json"
         }
     ]
 }

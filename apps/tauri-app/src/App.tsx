@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { RefreshCw, HardDrive, Settings2, AlertCircle } from "lucide-react";
-import { useDevices } from "@/hooks/useDevices";
+import { useDevices } from "@/hooks/use-devices";
 import { DeviceCard } from "@/components/device-card";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -26,6 +26,7 @@ function App() {
   const [appVersion] = useAtom(appVersionAtom);
   const [tauriStore] = useAtom(tauriStoreAtom);
   const [steamState] = useAtom(steamStateAtom);
+  console.error('devices = ', devices);
 
   // Initialize store once
   useEffect(() => {
@@ -124,12 +125,6 @@ function App() {
     }
   };
 
-  const mountableDevices = useMemo(() => {
-    return devices.filter(
-      (d) => d.fstype === "ntfs" || d.fstype === "exfat"
-    );
-  }, [devices]);
-
   return (
     <div className="min-h-screen bg-background">
       <TooltipProvider>
@@ -187,7 +182,7 @@ function App() {
             <div className="flex items-center justify-center py-12">
               <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          ) : mountableDevices.length === 0 ? (
+          ) : devices.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <HardDrive className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>No NTFS or exFAT devices found</p>
@@ -197,7 +192,7 @@ function App() {
             </div>
           ) : (
             <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(450px, 1fr))' }}>
-              {mountableDevices.map((device) => (
+              {devices.map((device) => (
                 <DeviceCard
                   key={device.uuid || device.name}
                   device={device}

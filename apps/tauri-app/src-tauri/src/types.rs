@@ -29,6 +29,8 @@ pub struct DeviceInfo {
     pub is_mounted: bool,
     /// Whether the device has a dirty NTFS volume
     pub is_dirty: bool,
+    /// Whether the device is offline (in fstab but not connected)
+    pub is_offline: bool,
     /// Managed fstab configuration if available
     pub managed_entry: Option<ManagedEntryInfo>,
 }
@@ -46,7 +48,36 @@ impl From<&steamos_mount_core::BlockDevice> for DeviceInfo {
             mountpoint: device.mountpoint.clone(),
             is_mounted: device.is_mounted(),
             is_dirty: false,     // Will be checked separately
+            is_offline: false,   // Online device
             managed_entry: None, // Will be populated separately
+        }
+    }
+}
+
+impl From<&steamos_mount_core::OfflineDevice> for DeviceInfo {
+    fn from(device: &steamos_mount_core::OfflineDevice) -> Self {
+        Self {
+            name: device
+                .mount_point
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| device.fs_spec.clone()),
+            path: String::new(), // No path for offline devices
+            label: device.label.clone(),
+            uuid: device.uuid.clone(),
+            partuuid: device.partuuid.clone(),
+            fstype: steamos_mount_core::vfs_type_to_fstype(&device.vfs_type).to_string(),
+            size: 0,          // Unknown size for offline devices
+            mountpoint: None, // Not mounted
+            is_mounted: false,
+            is_dirty: false,
+            is_offline: true, // Offline device
+            managed_entry: Some(ManagedEntryInfo {
+                mount_point: device.mount_point.display().to_string(),
+                options: device.mount_options.clone(),
+                raw_content: device.to_fstab_line(),
+            }),
         }
     }
 }

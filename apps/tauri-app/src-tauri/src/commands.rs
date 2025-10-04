@@ -324,35 +324,43 @@ where
     command_impl(&mut ctx).map_err(|e| error_to_user_message(&e))
 }
 
-/// Lists all mountable devices (NTFS/exFAT partitions).
+/// Lists all mountable devices (NTFS/exFAT partitions), including offline managed entries.
 #[command]
 pub async fn list_devices() -> Result<Vec<DeviceInfo>, String> {
     command_in_non_privileged_context(|_| {
-        let devices = disk::list_block_devices()?;
+        let online_devices = disk::list_block_devices()?;
+        let fstab_path = std::path::Path::new(fstab::FSTAB_PATH);
 
-        // Read fstab to check for configured entries
-        // We ignore errors here as fstab might not exist or be readable, which is fine
-        let fstab_entries = fstab::parse_fstab(std::path::Path::new(fstab::FSTAB_PATH))
-            .map(|parsed| parsed.managed_entries)
-            .unwrap_or_default();
+        // Use list_managed_devices to merge online devices with offline fstab entries
+        // This returns both devices and fstab_entries, eliminating duplicate parsing
+        let managed_result = disk::list_managed_devices(&online_devices, fstab_path)?;
 
-        let mountable = disk::filter_mountable_devices(&devices);
-
-        let result: Vec<DeviceInfo> = mountable
+        let result: Vec<DeviceInfo> = managed_result
+            .devices
             .iter()
-            .map(|d| {
-                let mut info = DeviceInfo::from(*d);
+            .map(|managed| match managed {
+                disk::ManagedDevice::Online(device) => {
+                    let mut info = DeviceInfo::from(device);
 
-                // Check if device is configured in fstab
-                if let Some(entry) = fstab_entries.iter().find(|e| device_matches_entry(d, e)) {
-                    info.managed_entry = Some(ManagedEntryInfo {
-                        mount_point: entry.mount_point.display().to_string(),
-                        options: entry.mount_options.clone(),
-                        raw_content: entry.to_fstab_line(),
-                    });
+                    // Check if device is configured in fstab (using pre-parsed entries)
+                    if let Some(entry) = managed_result
+                        .fstab_entries
+                        .iter()
+                        .find(|e| device_matches_entry(device, e))
+                    {
+                        info.managed_entry = Some(ManagedEntryInfo {
+                            mount_point: entry.mount_point.display().to_string(),
+                            options: entry.mount_options.clone(),
+                            raw_content: entry.to_fstab_line(),
+                        });
+                    }
+
+                    info
                 }
-
-                info
+                disk::ManagedDevice::Offline(offline) => {
+                    // Offline devices already have managed_entry set in From impl
+                    DeviceInfo::from(offline)
+                }
             })
             .collect();
 
@@ -596,6 +604,41 @@ pub async fn deconfigure_device(app: AppHandle, uuid: String) -> Result<(), Stri
 
         // Deconfigure the device
         deconfigure_device_internal(device, privledged_ctx)?;
+
+        Ok(())
+    })
+}
+
+/// Removes the fstab configuration for an offline device by fs_spec.
+///
+/// This is used for offline devices that are in fstab but not currently connected.
+/// Since we can't find the device by UUID (it's not online), we match by fs_spec directly.
+#[command]
+#[allow(dead_code)] // Used by Tauri invoke handler
+pub async fn deconfigure_offline_device(app: AppHandle, fs_spec: String) -> Result<(), String> {
+    command_in_privileged_context(&app, |privledged_ctx, _| {
+        let fstab_path = std::path::Path::new(fstab::FSTAB_PATH);
+        let parsed = fstab::parse_fstab(fstab_path)?;
+
+        // Find the entry matching this fs_spec
+        let _entry = parsed
+            .managed_entries
+            .iter()
+            .find(|e| e.fs_spec == fs_spec)
+            .with_whatever_context(|| {
+                format!("Offline device with fs_spec {} not found in fstab", fs_spec)
+            })?;
+
+        // Backup fstab with privilege escalation
+        fstab::backup_fstab_with_ctx(fstab_path, privledged_ctx)?;
+
+        // Remove matching entries with privilege escalation
+        fstab::remove_managed_entries_with_ctx(fstab_path, privledged_ctx, |entry| {
+            entry.fs_spec == fs_spec
+        })?;
+
+        // Reload systemd daemon
+        mount::reload_systemd_daemon_with_ctx(privledged_ctx)?;
 
         Ok(())
     })

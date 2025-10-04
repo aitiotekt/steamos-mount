@@ -15,3 +15,8 @@ build-tauri-app-on-archlinux:
 
 build-tauri-app-on-archlinux-legacy:
     cd apps/tauri-app && NO_STRIP=true cargo tauri build
+
+# Bump version number in all project files
+# Usage: just bump-version 0.1.4
+bump-version new_version:
+    node scripts/version-manage.ts {{new_version}}

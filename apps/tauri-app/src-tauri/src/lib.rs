@@ -6,9 +6,9 @@ mod commands;
 mod types;
 
 use commands::{
-    check_dirty_volume, copy_to_clipboard, deconfigure_device, detect_steam_library_vdf,
-    get_default_mount_point, get_device_info, get_presets, inject_steam_library, list_devices,
-    mount_device, repair_dirty_volume, unmount_device,
+    check_dirty_volume, copy_to_clipboard, deconfigure_device, deconfigure_offline_device,
+    detect_steam_library_vdf, get_default_mount_point, get_device_info, get_presets,
+    inject_steam_library, list_devices, mount_device, repair_dirty_volume, unmount_device,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -25,6 +25,7 @@ pub fn run() {
             mount_device,
             unmount_device,
             deconfigure_device,
+            deconfigure_offline_device,
             check_dirty_volume,
             repair_dirty_volume,
             inject_steam_library,

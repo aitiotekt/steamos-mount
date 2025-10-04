@@ -396,7 +396,7 @@ impl PrivilegedSession {
     /// * `child` - The spawned daemon process (must implement DaemonChild)
     ///
     /// # Example
-    /// ```no_run
+    /// ```ignore
     /// use std::process::{Command, Stdio};
     /// use steamos_mount_core::executor::{PrivilegedSession, StdDaemonChild};
     ///

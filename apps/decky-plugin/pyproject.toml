@@ -1,6 +1,6 @@
 [project]
 name = "steamos-mount-decky"
-version = "0.1.2"
+version = "0.1.3"
 description = "Decky plugin for steamos-mount"
 readme = "README.md"
 requires-python = ">=3.14"
