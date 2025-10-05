@@ -33,6 +33,16 @@ pub struct DeviceInfo {
     pub is_offline: bool,
     /// Managed fstab configuration if available
     pub managed_entry: Option<ManagedEntryInfo>,
+    /// The fstab fs_spec (e.g. "UUID=...", "LABEL=...", or device path)
+    pub fs_spec: Option<String>,
+    /// Steam libraries under this device's mount point
+    pub steam_libraries: Vec<SteamLibraryInfo>,
+    /// Whether the device is rotational (HDD)
+    pub rota: Option<bool>,
+    /// Whether the device is removable
+    pub removable: Option<bool>,
+    /// Transport type (e.g., "usb", "nvme")
+    pub transport: Option<String>,
 }
 
 impl From<&steamos_mount_core::BlockDevice> for DeviceInfo {
@@ -50,6 +60,11 @@ impl From<&steamos_mount_core::BlockDevice> for DeviceInfo {
             is_dirty: false,     // Will be checked separately
             is_offline: false,   // Online device
             managed_entry: None, // Will be populated separately
+            fs_spec: None,       // Will be populated if matched with fstab entry
+            steam_libraries: Vec::new(),
+            rota: Some(device.rota),
+            removable: Some(device.removable),
+            transport: device.transport.clone(),
         }
     }
 }
@@ -78,6 +93,50 @@ impl From<&steamos_mount_core::OfflineDevice> for DeviceInfo {
                 options: device.mount_options.clone(),
                 raw_content: device.to_fstab_line(),
             }),
+            fs_spec: Some(device.fs_spec.clone()),
+            steam_libraries: Vec::new(),
+            rota: None,
+            removable: None,
+            transport: None,
+        }
+    }
+}
+
+/// Implement conversion from core Device to DeviceInfo.
+impl From<&steamos_mount_core::Device> for DeviceInfo {
+    fn from(device: &steamos_mount_core::Device) -> Self {
+        Self {
+            name: device.name.clone(),
+            path: device
+                .path
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default(),
+            label: device.label.clone(),
+            uuid: device.uuid.clone(),
+            partuuid: device.partuuid.clone(),
+            fstype: device.fstype.clone(),
+            size: device.size,
+            mountpoint: device
+                .effective_mount_point()
+                .map(|p| p.display().to_string()),
+            is_mounted: device.is_mounted,
+            is_dirty: device.is_dirty,
+            is_offline: device.is_offline(),
+            managed_entry: device.fstab_entry.as_ref().map(|e| ManagedEntryInfo {
+                mount_point: e.mount_point.display().to_string(),
+                options: e.mount_options.clone(),
+                raw_content: e.to_fstab_line(),
+            }),
+            fs_spec: device.fs_spec.clone(),
+            steam_libraries: device
+                .steam_libraries
+                .iter()
+                .map(SteamLibraryInfo::from)
+                .collect(),
+            rota: device.rota,
+            removable: device.removable,
+            transport: device.transport.clone(),
         }
     }
 }
@@ -94,13 +153,23 @@ pub struct ManagedEntryInfo {
     pub raw_content: String,
 }
 
-/// Mount preset type.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum PresetType {
-    Ssd,
-    Portable,
-    Custom,
+/// Steam library information for UI display.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SteamLibraryInfo {
+    /// Path to the library folder.
+    pub path: String,
+    /// Optional label for the library.
+    pub label: String,
+}
+
+impl From<&steamos_mount_core::LibraryFolder> for SteamLibraryInfo {
+    fn from(lib: &steamos_mount_core::LibraryFolder) -> Self {
+        Self {
+            path: lib.path.display().to_string(),
+            label: lib.label.clone(),
+        }
+    }
 }
 
 /// Storage media type.
@@ -143,13 +212,15 @@ impl From<DeviceType> for steamos_mount_core::preset::DeviceType {
 pub struct MountConfig {
     /// Device UUID to mount
     pub uuid: String,
-    /// Preset type
-    pub preset: PresetType,
-    /// Media type (SSD/HDD)
+    /// Media type (Flash/Rotational)
     pub media_type: MediaType,
     /// Device type (Fixed/Removable)
     pub device_type: DeviceType,
-    /// Custom mount options (only for Custom preset)
+    /// Device timeout in seconds (for Fixed devices)
+    pub device_timeout_secs: Option<u32>,
+    /// Idle timeout in seconds (for Removable devices)
+    pub idle_timeout_secs: Option<u32>,
+    /// Custom mount options (appended to generated options)
     pub custom_options: Option<String>,
     /// Custom mount point path
     pub mount_point: String,
@@ -159,6 +230,35 @@ pub struct MountConfig {
     pub inject_steam: bool,
     /// Steam library path (relative to mount point)
     pub steam_library_path: Option<String>,
+}
+
+impl MountConfig {
+    /// Converts to core PresetConfig.
+    pub fn to_preset_config(
+        &self,
+        filesystem: steamos_mount_core::preset::SupportedFilesystem,
+    ) -> steamos_mount_core::preset::PresetConfig {
+        steamos_mount_core::preset::PresetConfig {
+            filesystem,
+            media_type: self.media_type.into(),
+            device_type: self.device_type.into(),
+            timeout: steamos_mount_core::preset::TimeoutConfig {
+                device_timeout_secs: self.device_timeout_secs,
+                idle_timeout_secs: self.idle_timeout_secs,
+            },
+            custom_options: self.custom_options.clone(),
+        }
+    }
+}
+
+/// Fstab line preview response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FstabPreview {
+    /// Generated mount options string
+    pub options: String,
+    /// Complete fstab line
+    pub fstab_line: String,
 }
 
 /// Steam injection mode.
@@ -201,16 +301,75 @@ pub struct SteamState {
     pub error: Option<String>,
 }
 
-/// Preset information for UI display.
+/// Metadata for a UI option.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PresetInfo {
-    /// Preset identifier
-    pub id: String,
-    /// Display name
-    pub name: String,
-    /// Description
+pub struct OptionMetadata {
+    pub value: String,
+    pub label: String,
     pub description: String,
-    /// Generated mount options preview
-    pub options_preview: String,
+    pub recommended: bool,
+}
+
+impl From<steamos_mount_core::preset::OptionMetadata> for OptionMetadata {
+    fn from(meta: steamos_mount_core::preset::OptionMetadata) -> Self {
+        Self {
+            value: meta.value,
+            label: meta.label,
+            description: meta.description,
+            recommended: meta.recommended,
+        }
+    }
+}
+
+/// Preset configuration DTO for suggestions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresetConfigDto {
+    pub media_type: MediaType,
+    pub device_type: DeviceType,
+    pub device_timeout_secs: Option<u32>,
+    pub idle_timeout_secs: Option<u32>,
+}
+
+/// Suggestion for mount configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MountConfigSuggestion {
+    pub default_config: PresetConfigDto,
+    pub connection_type_options: Vec<OptionMetadata>,
+    pub media_type_options: Vec<OptionMetadata>,
+    pub device_timeout_desc: String,
+    pub idle_timeout_desc: String,
+}
+
+impl From<steamos_mount_core::preset::MountConfigSuggestion> for MountConfigSuggestion {
+    fn from(suggestion: steamos_mount_core::preset::MountConfigSuggestion) -> Self {
+        Self {
+            default_config: PresetConfigDto {
+                media_type: match suggestion.default_config.media_type {
+                    steamos_mount_core::preset::MediaType::Flash => MediaType::Flash,
+                    steamos_mount_core::preset::MediaType::Rotational => MediaType::Rotational,
+                },
+                device_type: match suggestion.default_config.device_type {
+                    steamos_mount_core::preset::DeviceType::Fixed => DeviceType::Fixed,
+                    steamos_mount_core::preset::DeviceType::Removable => DeviceType::Removable,
+                },
+                device_timeout_secs: suggestion.default_config.timeout.device_timeout_secs,
+                idle_timeout_secs: suggestion.default_config.timeout.idle_timeout_secs,
+            },
+            connection_type_options: suggestion
+                .connection_type_options
+                .into_iter()
+                .map(OptionMetadata::from)
+                .collect(),
+            media_type_options: suggestion
+                .media_type_options
+                .into_iter()
+                .map(OptionMetadata::from)
+                .collect(),
+            device_timeout_desc: suggestion.device_timeout_desc,
+            idle_timeout_desc: suggestion.idle_timeout_desc,
+        }
+    }
 }

@@ -8,437 +8,47 @@
 //! Commands do not share sessions between invocations, ensuring explicit user consent
 //! for each privileged operation. This means each command will prompt for authorization
 //! when it needs to perform privileged actions.
+
 use std::io::Write;
-use std::process::{Command, Stdio};
+use std::process::Command;
+use std::process::Stdio;
 
-use snafu::{OptionExt, ResultExt};
+use snafu::OptionExt;
+use snafu::ResultExt;
 use tauri::AppHandle;
-use tauri::{Manager, command};
+use tauri::command;
 
-use steamos_mount_core::{
-    DaemonChild, DaemonSpawner, ExecutionContext, PrivilegeEscalation, StdDaemonChild, disk, fstab,
-    mount, preset, steam,
-};
-use tauri::path::BaseDirectory;
+use steamos_mount_core::{fstab, mount, preset, steam};
 
 use crate::types::{
-    DeviceInfo, ManagedEntryInfo, MountConfig, PresetInfo, PresetType, SteamInjectionConfig,
-    SteamInjectionMode,
+    DeviceInfo, FstabPreview, MountConfig, SteamInjectionConfig, SteamInjectionMode,
 };
 
-// ============================================================================
-// Tauri DaemonSpawner implementation
-// ============================================================================
-
-/// Spawner that uses Tauri sidecar with pkexec for privilege escalation.
-///
-/// This spawner resolves the sidecar path using Tauri's resource system
-/// and wraps it with pkexec for GUI-based privilege escalation.
-struct TauriPkexecSpawner {
-    sidecar_path: String,
-}
-
-impl TauriPkexecSpawner {
-    /// Creates a new TauriPkexecSpawner from an AppHandle.
-    fn new(app: &AppHandle) -> Result<Self, steamos_mount_core::Error> {
-        use std::fs;
-        // Resolve sidecar path using Tauri's resource system
-        let target_triple = tauri::utils::platform::target_triple()
-            .with_whatever_context(|e| format!("Failed to get target triple: {}", e))?;
-        let exe_suffix = std::env::consts::EXE_SUFFIX;
-        let sidecar_rel_name = format!("bin/steamos-mount-cli-{}{}", target_triple, exe_suffix);
-        let sidecar_resource_path = app
-            .path()
-            .resolve(&sidecar_rel_name, BaseDirectory::Resource)
-            .with_whatever_context(|e| {
-                format!(
-                    "Failed to resolve resource path of '{}': {}",
-                    &sidecar_rel_name, e
-                )
-            })?;
-        let sidecar_appdata_path = app
-            .path()
-            .resolve(&sidecar_rel_name, BaseDirectory::AppData)
-            .with_whatever_context(|e| {
-                format!(
-                    "Failed to resolve appdata path of '{}': {}",
-                    &sidecar_rel_name, e
-                )
-            })?;
-
-        if !sidecar_appdata_path.exists() {
-            if !sidecar_resource_path.exists() {
-                return Err(steamos_mount_core::Error::SidecarNotFound {
-                    path: sidecar_resource_path.to_string_lossy().to_string(),
-                });
-            }
-
-            if let Some(sidecar_appdata_dir) = sidecar_appdata_path.parent()
-                && !sidecar_appdata_dir.exists()
-            {
-                fs::create_dir_all(sidecar_appdata_dir).with_whatever_context(|e| {
-                    format!(
-                        "Failed to create directory '{}': {}",
-                        sidecar_appdata_dir.display(),
-                        e
-                    )
-                })?;
-            }
-
-            fs::copy(&sidecar_resource_path, &sidecar_appdata_path).with_whatever_context(|e| {
-                format!("Failed to copy sidecar from resource to appdata: {}", e)
-            })?;
-        }
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-
-            let mut perms = fs::metadata(&sidecar_appdata_path)
-                .with_whatever_context(|e| {
-                    format!(
-                        "Failed to get metadata of '{}': {}",
-                        sidecar_appdata_path.display(),
-                        e
-                    )
-                })?
-                .permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&sidecar_appdata_path, perms).with_whatever_context(|e| {
-                format!(
-                    "Failed to set permissions of '{}': {}",
-                    sidecar_appdata_path.display(),
-                    e
-                )
-            })?;
-        }
-
-        Ok(Self {
-            sidecar_path: sidecar_appdata_path.to_string_lossy().to_string(),
-        })
-    }
-}
-
-impl DaemonSpawner for TauriPkexecSpawner {
-    fn spawn(&self) -> steamos_mount_core::Result<Box<dyn DaemonChild>> {
-        // First, check if sidecar binary exists
-        if !std::path::Path::new(&self.sidecar_path).exists() {
-            return Err(steamos_mount_core::Error::SidecarNotFound {
-                path: self.sidecar_path.clone(),
-            });
-        }
-
-        // Check if pkexec exists
-        if Command::new("pkexec")
-            .arg("--version")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .is_err()
-        {
-            return Err(steamos_mount_core::Error::EscalationToolNotFound {
-                tool: "pkexec".to_string(),
-            });
-        }
-
-        // Use std::process::Command with pkexec to spawn the daemon
-        // This gives us a std::process::Child that we can wrap in StdDaemonChild
-        let child = Command::new("pkexec")
-            .arg(&self.sidecar_path)
-            .arg("daemon")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| {
-                // Check if it's a "command not found" error for pkexec
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    steamos_mount_core::Error::EscalationToolNotFound {
-                        tool: "pkexec".to_string(),
-                    }
-                } else {
-                    steamos_mount_core::Error::SessionCreation {
-                        message: format!(
-                            "Failed to spawn pkexec with sidecar '{}': {}",
-                            self.sidecar_path, e
-                        ),
-                    }
-                }
-            })?;
-
-        Ok(Box::new(StdDaemonChild::new(child)))
-    }
-}
+use crate::context::{command_in_non_privileged_context, command_in_privileged_context};
 
 // ============================================================================
-// Error conversion utilities
+// Tauri commands
 // ============================================================================
-
-/// Converts core library errors to user-friendly error messages.
-///
-/// This function provides detailed, actionable error messages for different
-/// error scenarios, making it easier for users to understand and resolve issues.
-fn error_to_user_message(error: &steamos_mount_core::Error) -> String {
-    match error {
-        steamos_mount_core::Error::SidecarNotFound { path } => {
-            format!(
-                "Sidecar binary not found at '{}'. This may indicate:\n\
-                - The application was not properly installed\n\
-                - The binary file is missing or corrupted\n\
-                - Please reinstall the application",
-                path
-            )
-        }
-        steamos_mount_core::Error::EscalationToolNotFound { tool } => {
-            format!(
-                "Privilege escalation tool '{}' not found. Please install it:\n\
-                - On Debian/Ubuntu: sudo apt install policykit-1\n\
-                - On Arch Linux: sudo pacman -S polkit\n\
-                - On Fedora: sudo dnf install polkit",
-                tool
-            )
-        }
-        steamos_mount_core::Error::AuthenticationCancelled => {
-            "Authentication cancelled by user".to_string()
-        }
-        steamos_mount_core::Error::SessionCommunication { message } => {
-            format!("Session communication error: {}", message)
-        }
-        // For other errors, use the default Display implementation
-        _ => error.to_string(),
-    }
-}
-
-// ============================================================================
-// Context creation
-// ============================================================================
-
-/// Creates a new execution context with pkexec session for GUI privilege escalation.
-///
-/// This function creates a new ExecutionContext with a TauriPkexecSpawner.
-/// **Each call creates a new context**, ensuring each command requires its own authorization.
-/// The daemon is spawned lazily - only when a privileged command is first executed within
-/// that command's execution context.
-///
-/// **Important**: Sessions are not shared between different command invocations. Each
-/// command will prompt for authorization when it needs to perform privileged actions.
-///
-/// Returns a new execution context.
-/// Errors are returned as core errors for unified error handling.
-fn create_privileged_context(app: &AppHandle) -> steamos_mount_core::Result<ExecutionContext> {
-    // Create spawner for lazy session creation
-    let spawner = TauriPkexecSpawner::new(app)
-        .with_whatever_context(|e| format!("Failed to create spawner: {}", e))?;
-
-    // Create execution context with the spawner
-    // The session will be created lazily when first needed
-    let ctx = ExecutionContext::with_spawner(PrivilegeEscalation::PkexecSession, Box::new(spawner));
-
-    Ok(ctx)
-}
-
-/// Creates a new non-privileged execution context.
-///
-/// This function creates a new default ExecutionContext without privilege escalation.
-/// Each call creates a new context instance.
-/// Errors are returned as core errors for unified error handling.
-fn get_non_privileged_context() -> steamos_mount_core::Result<ExecutionContext> {
-    let ctx = ExecutionContext::default();
-    Ok(ctx)
-}
-
-/// Executes a command that requires privilege escalation context,
-/// with automatic error conversion for core library errors.
-///
-/// This function provides a unified wrapper for commands that need privileged execution.
-/// **Each call creates a new privileged context**, requiring its own authorization.
-/// Sessions are not shared between different command invocations.
-///
-/// It handles:
-/// - Creating a new privileged context for this command (with error conversion for sidecar/pkexec errors)
-/// - Creating a non-privileged context for operations that don't require escalation
-/// - Converting privilege-related errors to user-friendly messages
-/// - Locking the contexts for thread-safe access
-///
-/// # Arguments
-/// * `app` - The Tauri AppHandle
-/// * `command_impl` - A closure that receives both privileged and non-privileged contexts
-///   and performs the actual command logic
-///
-/// # Returns
-/// * `Ok(T)` - The result from the command implementation
-/// * `Err(String)` - User-friendly error message
-///
-/// # Example
-/// ```ignore
-/// command_in_privileged_context(&app, |privileged_ctx, non_privileged_ctx| {
-///     // Use privileged_ctx for operations requiring root
-///     mount::mount_device_with_ctx(device, &mount_point, privileged_ctx)
-/// })
-/// ```
-fn command_in_privileged_context<F, T>(app: &AppHandle, command_impl: F) -> Result<T, String>
-where
-    F: FnOnce(&mut ExecutionContext, &mut ExecutionContext) -> steamos_mount_core::Result<T>,
-{
-    // Create a new privileged context for this command (each command requires its own authorization)
-    let mut privileged_ctx =
-        create_privileged_context(app).map_err(|e| error_to_user_message(&e))?;
-    let mut non_privileged_ctx =
-        get_non_privileged_context().map_err(|e| error_to_user_message(&e))?;
-
-    // Execute the command implementation and convert errors
-    command_impl(&mut privileged_ctx, &mut non_privileged_ctx)
-        .map_err(|e| error_to_user_message(&e))
-}
-
-/// Executes a command that does not require privilege escalation context,
-/// with automatic error conversion for core library errors.
-///
-/// This function provides a unified wrapper for commands that don't need privileged execution.
-/// It handles:
-/// - Creating a new non-privileged context for this command
-/// - Converting errors to user-friendly messages
-/// - Locking the context for thread-safe access
-///
-/// # Arguments
-/// * `command_impl` - A closure that receives the locked context and performs the actual command logic
-///
-/// # Returns
-/// * `Ok(T)` - The result from the command implementation
-/// * `Err(String)` - User-friendly error message
-///
-/// # Example
-/// ```ignore
-/// command_in_non_privileged_context(|_ctx| {
-///     disk::list_block_devices()
-/// })
-/// ```
-fn command_in_non_privileged_context<F, T>(command_impl: F) -> Result<T, String>
-where
-    F: FnOnce(&mut ExecutionContext) -> steamos_mount_core::Result<T>,
-{
-    // Get or create non-privileged context
-    let mut ctx = get_non_privileged_context().map_err(|e| error_to_user_message(&e))?;
-
-    // Execute the command implementation and convert errors
-    command_impl(&mut ctx).map_err(|e| error_to_user_message(&e))
-}
 
 /// Lists all mountable devices (NTFS/exFAT partitions), including offline managed entries.
 #[command]
 pub async fn list_devices() -> Result<Vec<DeviceInfo>, String> {
     command_in_non_privileged_context(|_| {
-        let online_devices = disk::list_block_devices()?;
-        let fstab_path = std::path::Path::new(fstab::FSTAB_PATH);
+        let config = steamos_mount_core::ListDevicesConfig::new();
+        let devices = steamos_mount_core::list_devices(&config)?;
 
-        // Use list_managed_devices to merge online devices with offline fstab entries
-        // This returns both devices and fstab_entries, eliminating duplicate parsing
-        let managed_result = disk::list_managed_devices(&online_devices, fstab_path)?;
-
-        let result: Vec<DeviceInfo> = managed_result
-            .devices
-            .iter()
-            .map(|managed| match managed {
-                disk::ManagedDevice::Online(device) => {
-                    let mut info = DeviceInfo::from(device);
-
-                    // Check if device is configured in fstab (using pre-parsed entries)
-                    if let Some(entry) = managed_result
-                        .fstab_entries
-                        .iter()
-                        .find(|e| device_matches_entry(device, e))
-                    {
-                        info.managed_entry = Some(ManagedEntryInfo {
-                            mount_point: entry.mount_point.display().to_string(),
-                            options: entry.mount_options.clone(),
-                            raw_content: entry.to_fstab_line(),
-                        });
-                    }
-
-                    info
-                }
-                disk::ManagedDevice::Offline(offline) => {
-                    // Offline devices already have managed_entry set in From impl
-                    DeviceInfo::from(offline)
-                }
-            })
-            .collect();
-
-        Ok(result)
+        Ok(devices.iter().map(DeviceInfo::from).collect())
     })
-}
-
-fn device_matches_entry(device: &disk::BlockDevice, entry: &fstab::FstabEntry) -> bool {
-    if entry.fs_spec.starts_with("UUID=") {
-        if let Some(uuid) = &device.uuid {
-            return entry.fs_spec == format!("UUID={}", uuid);
-        }
-    } else if entry.fs_spec.starts_with("PARTUUID=") {
-        if let Some(partuuid) = &device.partuuid {
-            return entry.fs_spec == format!("PARTUUID={}", partuuid);
-        }
-    } else if entry.fs_spec.starts_with("LABEL=") {
-        if let Some(label) = &device.label {
-            return entry.fs_spec == format!("LABEL={}", label);
-        }
-    } else {
-        // Path match
-        return entry.fs_spec == device.path.display().to_string();
-    }
-    false
-}
-
-/// Removes the fstab configuration for a device (deconfigure).
-///
-/// This is an internal helper function that performs the actual deconfiguration:
-/// - Filters out the device's fstab entry
-/// - Backs up fstab
-/// - Writes remaining entries
-/// - Reloads systemd daemon
-///
-/// # Arguments
-/// * `device` - The device to deconfigure
-/// * `ctx` - The execution context for privileged operations
-///
-/// # Returns
-/// * `Ok(())` - Success
-/// * `Err(Error)` - If the device is not configured in fstab or if deconfiguration fails
-fn deconfigure_device_internal(
-    device: &disk::BlockDevice,
-    ctx: &mut ExecutionContext,
-) -> steamos_mount_core::Result<()> {
-    // Read current fstab entries
-    let fstab_path = std::path::Path::new(fstab::FSTAB_PATH);
-    let parsed = fstab::parse_fstab(fstab_path)?;
-
-    // Find the entry matching this device
-    let _entry_to_remove = parsed
-        .managed_entries
-        .iter()
-        .find(|e| device_matches_entry(device, e))
-        .whatever_context("Device is not configured in fstab")?;
-
-    // Backup fstab with privilege escalation
-    fstab::backup_fstab_with_ctx(fstab_path, ctx)?;
-
-    // Remove matching entries with privilege escalation
-    fstab::remove_managed_entries_with_ctx(fstab_path, ctx, |entry| {
-        device_matches_entry(device, entry)
-    })?;
-
-    // Reload systemd daemon
-    mount::reload_systemd_daemon_with_ctx(ctx)?;
-
-    Ok(())
 }
 
 /// Gets detailed information about a specific device by UUID.
 #[command]
 pub async fn get_device_info(uuid: String) -> Result<Option<DeviceInfo>, String> {
     command_in_non_privileged_context(|_| {
-        let devices = disk::list_block_devices()?;
+        let config = steamos_mount_core::ListDevicesConfig::new();
+        let devices = steamos_mount_core::list_devices(&config)?;
 
-        let device = devices.iter().find(|d| d.uuid.as_ref() == Some(&uuid));
+        let device = steamos_mount_core::device::find_device_by_uuid(&devices, &uuid);
 
         match device {
             Some(d) => Ok(Some(DeviceInfo::from(d))),
@@ -451,11 +61,7 @@ pub async fn get_device_info(uuid: String) -> Result<Option<DeviceInfo>, String>
 #[command]
 pub async fn get_default_mount_point(uuid: String) -> Result<String, String> {
     command_in_non_privileged_context(|_| {
-        let devices = disk::list_block_devices()?;
-
-        let device = devices
-            .iter()
-            .find(|d| d.uuid.as_ref() == Some(&uuid))
+        let device = steamos_mount_core::find_online_block_device_by_uuid(&uuid)?
             .with_whatever_context(|| format!("Device with UUID {} not found", uuid))?;
 
         let mount_name = device.suggested_mount_name();
@@ -465,16 +71,56 @@ pub async fn get_default_mount_point(uuid: String) -> Result<String, String> {
     })
 }
 
+/// Previews mount options and fstab entry for a device configuration.
+///
+/// This command generates a preview of the fstab entry without actually mounting,
+/// allowing the UI to show real-time updates as the user changes options.
+#[command]
+pub async fn preview_mount_options(config: MountConfig) -> Result<FstabPreview, String> {
+    command_in_non_privileged_context(|_| {
+        // Find the device to get filesystem type and fs_spec
+        let device = steamos_mount_core::find_online_block_device_by_uuid(&config.uuid)?
+            .with_whatever_context(|| format!("Device with UUID {} not found", config.uuid))?;
+
+        // Get filesystem type
+        let fstype = device
+            .fstype
+            .as_ref()
+            .with_whatever_context(|| "Device has no filesystem type")?;
+        let fs = preset::SupportedFilesystem::try_from(fstype.as_str())
+            .with_whatever_context(|e| format!("Invalid filesystem type: {}", e))?;
+
+        // Get fs_spec for fstab
+        let fs_spec = device
+            .fstab_spec()
+            .with_whatever_context(|| "Could not determine device identifier")?;
+
+        // Build preset config
+        let preset_config = config.to_preset_config(fs);
+
+        // Generate options
+        let uid = preset::current_uid();
+        let gid = preset::current_gid();
+        let options = preset_config.generate_options(uid, gid);
+
+        // Generate full fstab line
+        let mount_point = std::path::Path::new(&config.mount_point);
+        let fstab_line = preset_config.preview_fstab_line(&fs_spec, mount_point, uid, gid);
+
+        Ok(FstabPreview {
+            options,
+            fstab_line,
+        })
+    })
+}
+
 /// Mounts a device with the specified configuration.
 #[command]
 pub async fn mount_device(app: AppHandle, config: MountConfig) -> Result<(), String> {
     // All privileged operations are wrapped in command_in_privileged_context
     command_in_privileged_context(&app, |ctx, _| {
-        // Find the device by UUID (doesn't require privilege)
-        let devices = disk::list_block_devices()?;
-        let device = devices
-            .iter()
-            .find(|d| d.uuid.as_ref().map(|u| u == &config.uuid).unwrap_or(false))
+        // Find the device by UUID using the new API
+        let device = steamos_mount_core::find_online_block_device_by_uuid(&config.uuid)?
             .with_whatever_context(|| format!("Device with UUID {} not found", config.uuid))?;
 
         // Determine filesystem type (doesn't require privilege)
@@ -485,14 +131,8 @@ pub async fn mount_device(app: AppHandle, config: MountConfig) -> Result<(), Str
         let fs = preset::SupportedFilesystem::try_from(fstype.as_str())
             .with_whatever_context(|e| format!("Invalid filesystem type: {}", e))?;
 
-        // Build preset config (doesn't require privilege)
-        let preset_config = match config.preset {
-            PresetType::Ssd => preset::MountPreset::ssd_defaults(fs),
-            PresetType::Portable => preset::MountPreset::portable_defaults(fs),
-            PresetType::Custom => {
-                preset::MountPreset::custom(fs, config.custom_options.as_deref().unwrap_or(""))
-            }
-        };
+        // Build preset config using orthogonal options from MountConfig
+        let preset_config = config.to_preset_config(fs);
 
         // Generate mount options (doesn't require privilege)
         let uid = preset::current_uid();
@@ -501,8 +141,8 @@ pub async fn mount_device(app: AppHandle, config: MountConfig) -> Result<(), Str
 
         // Generate mount point (doesn't require privilege)
         let mount_point = std::path::PathBuf::from(&config.mount_point);
-        let device_uuid = &config.uuid;
         let force_root_creation = &config.force_root_creation;
+
         // Get fstab spec (doesn't require privilege)
         let fs_spec = device
             .fstab_spec()
@@ -516,16 +156,9 @@ pub async fn mount_device(app: AppHandle, config: MountConfig) -> Result<(), Str
         // Create fstab entry (doesn't require privilege)
         let entry = fstab::FstabEntry::new(fs_spec, &mount_point, fs.driver_name(), options, 0, 0);
 
-        // Re-find the device (needed for reference)
-        let devices = disk::list_block_devices()?;
-        let device = devices
-            .iter()
-            .find(|d| d.uuid.as_ref() == Some(device_uuid))
-            .with_whatever_context(|| format!("Device with UUID {} not found", device_uuid))?;
-
         // Check for dirty volume first
         if device.is_ntfs() && !device.is_mounted() {
-            let is_dirty = mount::detect_dirty_volume_with_ctx(device, ctx)?;
+            let is_dirty = mount::detect_dirty_volume_with_ctx(&device, ctx)?;
             if is_dirty {
                 return Err(steamos_mount_core::Error::DirtyVolume {
                     device: device.path.display().to_string(),
@@ -547,7 +180,7 @@ pub async fn mount_device(app: AppHandle, config: MountConfig) -> Result<(), Str
         mount::reload_systemd_daemon_with_ctx(ctx)?;
 
         // Mount the device
-        mount::mount_device_with_ctx(device, &mount_point, ctx)?;
+        mount::mount_device_with_ctx(&device, &mount_point, ctx)?;
 
         Ok(())
     })
@@ -560,121 +193,85 @@ pub async fn mount_device(app: AppHandle, config: MountConfig) -> Result<(), Str
 #[command]
 pub async fn unmount_device(app: AppHandle, mount_point: String) -> Result<(), String> {
     let path = std::path::PathBuf::from(&mount_point);
-    command_in_privileged_context(&app, |priviledged_ctx, _| {
+    command_in_privileged_context(&app, |privileged_ctx, _| {
         // First, unmount the device
-        mount::unmount_device_with_ctx(&path, priviledged_ctx)?;
+        mount::unmount_device_with_ctx(&path, privileged_ctx)?;
 
-        // Find the device by mount point (after unmount, mountpoint will be None,
-        // so we need to find it by matching the mount point path)
-        let devices = disk::list_block_devices()?;
+        // Use the Device API to find the device by mount point
+        let config = steamos_mount_core::ListDevicesConfig::new();
+        let devices = steamos_mount_core::list_devices(&config)?;
 
-        // Try to find device by checking fstab entries that match this mount point
-        let fstab_path = std::path::Path::new(fstab::FSTAB_PATH);
-        let parsed = fstab::parse_fstab(fstab_path)?;
-
-        // Find fstab entry that matches this mount point
-        if let Some(entry) = parsed
-            .managed_entries
-            .iter()
-            .find(|e| e.mount_point == path)
-        {
-            // Find the device that matches this fstab entry
-            if let Some(device) = devices.iter().find(|d| device_matches_entry(d, entry)) {
-                // Device has a managed fstab entry, deconfigure it
-                deconfigure_device_internal(device, priviledged_ctx)?;
-            }
+        // Find device by fstab entry mount point and deconfigure if managed
+        if let Some(device) = devices.iter().find(|d| {
+            d.fstab_entry
+                .as_ref()
+                .is_some_and(|e| e.mount_point == path)
+        }) {
+            // Device has a managed fstab entry, deconfigure it using the unified API
+            steamos_mount_core::device::deconfigure_device_with_ctx(device, privileged_ctx)?;
         }
 
         Ok(())
     })
 }
 
-/// Removes the fstab configuration for a device (deconfigure).
+/// Removes the fstab configuration for a device (online or offline).
+///
+/// Uses fs_spec + mount_point for precise matching, supporting scenarios where
+/// a single block device has multiple mount points configured.
 #[command]
 #[allow(dead_code)] // Used by Tauri invoke handler
-pub async fn deconfigure_device(app: AppHandle, uuid: String) -> Result<(), String> {
-    // All privileged operations are wrapped in command_in_privileged_context
-    command_in_privileged_context(&app, |privledged_ctx, _| {
-        // Find the device by UUID (doesn't require privilege)
-        let devices = disk::list_block_devices()?;
+pub async fn deconfigure_device(
+    app: AppHandle,
+    fs_spec: String,
+    mount_point: String,
+) -> Result<(), String> {
+    let mount_path = std::path::PathBuf::from(&mount_point);
+    command_in_privileged_context(&app, |ctx, _| {
+        // Find the device using the unified Device API
+        let config = steamos_mount_core::ListDevicesConfig::new();
+        let devices = steamos_mount_core::list_devices(&config)?;
+
+        // Find device by fs_spec + mount_point for precise matching
         let device = devices
             .iter()
-            .find(|d| d.uuid.as_ref() == Some(&uuid))
-            .with_whatever_context(|| format!("Device with UUID {} not found", uuid))?;
-
-        // Deconfigure the device
-        deconfigure_device_internal(device, privledged_ctx)?;
-
-        Ok(())
-    })
-}
-
-/// Removes the fstab configuration for an offline device by fs_spec.
-///
-/// This is used for offline devices that are in fstab but not currently connected.
-/// Since we can't find the device by UUID (it's not online), we match by fs_spec directly.
-#[command]
-#[allow(dead_code)] // Used by Tauri invoke handler
-pub async fn deconfigure_offline_device(app: AppHandle, fs_spec: String) -> Result<(), String> {
-    command_in_privileged_context(&app, |privledged_ctx, _| {
-        let fstab_path = std::path::Path::new(fstab::FSTAB_PATH);
-        let parsed = fstab::parse_fstab(fstab_path)?;
-
-        // Find the entry matching this fs_spec
-        let _entry = parsed
-            .managed_entries
-            .iter()
-            .find(|e| e.fs_spec == fs_spec)
+            .find(|d| {
+                d.fstab_entry
+                    .as_ref()
+                    .is_some_and(|e| e.fs_spec == fs_spec && e.mount_point == mount_path)
+            })
             .with_whatever_context(|| {
-                format!("Offline device with fs_spec {} not found in fstab", fs_spec)
+                format!(
+                    "Device with fs_spec {} and mount_point {} not found",
+                    fs_spec, mount_point
+                )
             })?;
 
-        // Backup fstab with privilege escalation
-        fstab::backup_fstab_with_ctx(fstab_path, privledged_ctx)?;
-
-        // Remove matching entries with privilege escalation
-        fstab::remove_managed_entries_with_ctx(fstab_path, privledged_ctx, |entry| {
-            entry.fs_spec == fs_spec
-        })?;
-
-        // Reload systemd daemon
-        mount::reload_systemd_daemon_with_ctx(privledged_ctx)?;
-
-        Ok(())
+        // Deconfigure using the unified API
+        steamos_mount_core::device::deconfigure_device_with_ctx(device, ctx)
     })
 }
 
 /// Checks if a device has a dirty NTFS volume.
 #[command]
 pub async fn check_dirty_volume(app: AppHandle, uuid: String) -> Result<bool, String> {
-    // Prepare non-privileged data (device lookup)
-    let device_uuid = uuid.clone();
-    command_in_privileged_context(&app, |priviledged_ctx, _| {
-        // Re-find the device (needed for reference)
-        let devices = disk::list_block_devices()?;
-        let device = devices
-            .iter()
-            .find(|d| d.uuid.as_ref() == Some(&device_uuid))
-            .with_whatever_context(|| format!("Device with UUID {} not found", device_uuid))?;
+    command_in_privileged_context(&app, |privileged_ctx, _| {
+        let device = steamos_mount_core::find_online_block_device_by_uuid(&uuid)?
+            .with_whatever_context(|| format!("Device with UUID {} not found", uuid))?;
 
         // Check dirty volume requires privilege
-        mount::detect_dirty_volume_with_ctx(device, priviledged_ctx)
+        mount::detect_dirty_volume_with_ctx(&device, privileged_ctx)
     })
 }
 
 /// Attempts to repair a dirty NTFS volume.
 #[command]
 pub async fn repair_dirty_volume(app: AppHandle, uuid: String) -> Result<(), String> {
-    // Repair dirty volume requires privilege
-    let device_uuid = uuid.clone();
     command_in_privileged_context(&app, |privileged_ctx, _| {
-        // Find the device by UUID (doesn't require privilege, but done here for error handling)
-        let devices = disk::list_block_devices()?;
-        let device = devices
-            .iter()
-            .find(|d| d.uuid.as_ref() == Some(&device_uuid))
-            .with_whatever_context(|| format!("Device with UUID {} not found", device_uuid))?;
-        mount::repair_dirty_volume_with_ctx(device, privileged_ctx)
+        let device = steamos_mount_core::find_online_block_device_by_uuid(&uuid)?
+            .with_whatever_context(|| format!("Device with UUID {} not found", uuid))?;
+
+        mount::repair_dirty_volume_with_ctx(&device, privileged_ctx)
     })
 }
 
@@ -786,38 +383,30 @@ pub async fn get_steam_state(
     })
 }
 
-/// Gets available presets for a filesystem type.
+/// Gets a recommended mount configuration for a device.
 #[command]
-pub async fn get_presets(filesystem: String) -> Result<Vec<PresetInfo>, String> {
+pub async fn get_mount_config_suggestion(
+    uuid: String,
+) -> Result<crate::types::MountConfigSuggestion, String> {
     command_in_non_privileged_context(|_| {
-        let fs = preset::SupportedFilesystem::try_from(filesystem.as_str())?;
+        let device = steamos_mount_core::find_online_block_device_by_uuid(&uuid)?
+            .with_whatever_context(|| format!("Device with UUID {} not found", uuid))?;
 
-        let uid = preset::current_uid();
-        let gid = preset::current_gid();
+        let fstype = device
+            .fstype
+            .as_ref()
+            .with_whatever_context(|| "Device has no filesystem type")?;
+        let fs = preset::SupportedFilesystem::try_from(fstype.as_str())
+            .with_whatever_context(|e| format!("Invalid filesystem type: {}", e))?;
 
-        let ssd_preset = preset::MountPreset::ssd_defaults(fs);
-        let portable_preset = preset::MountPreset::portable_defaults(fs);
+        let suggestion = steamos_mount_core::preset::suggest_preset_config(
+            fs,
+            Some(device.rota),
+            Some(device.removable),
+            device.transport.as_deref(),
+        );
 
-        Ok(vec![
-            PresetInfo {
-                id: "ssd".to_string(),
-                name: "Internal SSD".to_string(),
-                description: "High performance settings for internal or fixed drives".to_string(),
-                options_preview: ssd_preset.generate_options(uid, gid),
-            },
-            PresetInfo {
-                id: "portable".to_string(),
-                name: "Portable Drive".to_string(),
-                description: "Safe settings for removable drives with auto-mount".to_string(),
-                options_preview: portable_preset.generate_options(uid, gid),
-            },
-            PresetInfo {
-                id: "custom".to_string(),
-                name: "Custom".to_string(),
-                description: "Manually configure mount options".to_string(),
-                options_preview: "".to_string(),
-            },
-        ])
+        Ok(crate::types::MountConfigSuggestion::from(suggestion))
     })
 }
 

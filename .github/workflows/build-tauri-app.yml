@@ -54,6 +54,29 @@ jobs:
             echo "prerelease=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Extract Release Notes
+        id: extract_release_notes
+        run: |
+          VERSION=$(jq -r .version apps/tauri-app/src-tauri/tauri.conf.json)
+          awk -v ver="$VERSION" '
+            /^## / {
+              if ($2 == ver) {
+                p=1; next
+              } else if (p) {
+                exit
+              }
+            }
+            /^---$/ {
+              if (p) exit
+            }
+            p
+          ' CHANGELOG.md > RELEASE_NOTES.md
+          
+          # Set environment variable for the next step
+          echo "RELEASE_BODY<<EOF" >> $GITHUB_ENV
+          cat RELEASE_NOTES.md >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
       - name: Cache Tauri CLI
         id: cache-tauri
         uses: actions/cache@v4
@@ -86,7 +109,7 @@ jobs:
           projectPath: "./apps/tauri-app"
           tagName: app-v__VERSION__
           releaseName: "App v__VERSION__"
-          releaseBody: "See the assets to download this version and install."
+          releaseBody: ${{ env.RELEASE_BODY }}
           releaseDraft: true
           prerelease: ${{ steps.get_version.outputs.prerelease }}
           tauriScript: "cargo tauri"

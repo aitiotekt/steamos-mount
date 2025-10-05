@@ -1,6 +1,6 @@
 {
   "name": "steamos-mount",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "type": "module",
   "description": "Ergonomic NTFS/exFAT drive auto-mounter for SteamOS",
   "private": true,

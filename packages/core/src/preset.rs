@@ -29,6 +29,12 @@ pub fn current_gid() -> u32 {
 /// Default options applied to all mounts.
 pub const BASE_OPTIONS: &str = "umask=000,nofail,rw,noatime";
 
+/// Default device timeout for internal devices (seconds).
+pub const DEFAULT_DEVICE_TIMEOUT_SECS: u32 = 3;
+
+/// Default idle timeout for removable devices (seconds).
+pub const DEFAULT_IDLE_TIMEOUT_SECS: u32 = 60;
+
 /// Supported filesystem types for preset generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SupportedFilesystem {
@@ -78,12 +84,33 @@ pub enum DeviceType {
     Removable,
 }
 
+/// Timeout configuration for systemd mount options.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TimeoutConfig {
+    /// x-systemd.device-timeout in seconds (for Fixed devices).
+    /// Set to None to omit this option.
+    pub device_timeout_secs: Option<u32>,
+    /// x-systemd.idle-timeout in seconds (for Removable devices).
+    /// Set to None to omit this option.
+    pub idle_timeout_secs: Option<u32>,
+}
+
+impl Default for TimeoutConfig {
+    fn default() -> Self {
+        Self {
+            device_timeout_secs: Some(DEFAULT_DEVICE_TIMEOUT_SECS),
+            idle_timeout_secs: Some(DEFAULT_IDLE_TIMEOUT_SECS),
+        }
+    }
+}
+
 /// Configuration for mount option generation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PresetConfig {
     pub filesystem: SupportedFilesystem,
     pub media_type: MediaType,
     pub device_type: DeviceType,
+    pub timeout: TimeoutConfig,
     pub custom_options: Option<String>,
 }
 
@@ -94,6 +121,7 @@ impl PresetConfig {
             filesystem,
             media_type: MediaType::default(),
             device_type: DeviceType::default(),
+            timeout: TimeoutConfig::default(),
             custom_options: None,
         }
     }
@@ -116,15 +144,19 @@ impl PresetConfig {
             opts.push("discard".to_string());
         }
 
-        // 4. Device Type Specifics
+        // 4. Device Type Specifics with configurable timeouts
         match self.device_type {
             DeviceType::Fixed => {
-                opts.push("x-systemd.device-timeout=3s".to_string());
+                if let Some(timeout) = self.timeout.device_timeout_secs {
+                    opts.push(format!("x-systemd.device-timeout={}s", timeout));
+                }
             }
             DeviceType::Removable => {
                 opts.push("noauto".to_string());
                 opts.push("x-systemd.automount".to_string());
-                opts.push("x-systemd.idle-timeout=60s".to_string());
+                if let Some(timeout) = self.timeout.idle_timeout_secs {
+                    opts.push(format!("x-systemd.idle-timeout={}s", timeout));
+                }
             }
         }
 
@@ -138,6 +170,34 @@ impl PresetConfig {
 
         opts.join(",")
     }
+
+    /// Generates a complete fstab line preview.
+    ///
+    /// # Arguments
+    /// * `fs_spec` - The device identifier (e.g., "UUID=xxx", "PARTUUID=xxx")
+    /// * `mount_point` - The mount point path
+    /// * `uid` - User ID for ownership
+    /// * `gid` - Group ID for ownership
+    ///
+    /// # Returns
+    /// A complete fstab line suitable for display or writing.
+    pub fn preview_fstab_line(
+        &self,
+        fs_spec: &str,
+        mount_point: &std::path::Path,
+        uid: u32,
+        gid: u32,
+    ) -> String {
+        let options = self.generate_options(uid, gid);
+        let vfs_type = self.filesystem.driver_name();
+        format!(
+            "{}  {}  {}  {}  0  0",
+            fs_spec,
+            mount_point.display(),
+            vfs_type,
+            options
+        )
+    }
 }
 
 // For backward compatibility / ease of use during transition
@@ -150,6 +210,7 @@ impl MountPreset {
             filesystem: fs,
             media_type: MediaType::Flash,
             device_type: DeviceType::Fixed,
+            timeout: TimeoutConfig::default(),
             custom_options: None,
         }
     }
@@ -160,6 +221,7 @@ impl MountPreset {
             filesystem: fs,
             media_type: MediaType::Flash, // Assume portable are mostly flash
             device_type: DeviceType::Removable,
+            timeout: TimeoutConfig::default(),
             custom_options: None,
         }
     }
@@ -170,8 +232,112 @@ impl MountPreset {
             filesystem: fs,
             media_type: MediaType::default(),
             device_type: DeviceType::default(),
+            timeout: TimeoutConfig::default(),
             custom_options: Some(options.to_string()),
         }
+    }
+}
+
+/// Metadata for a UI option.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct OptionMetadata {
+    /// Option value (e.g., "fixed", "removable").
+    pub value: String,
+    /// Display label.
+    pub label: String,
+    /// Human-readable description.
+    pub description: String,
+    /// Whether this is the recommended option.
+    pub recommended: bool,
+}
+
+/// Suggestion for mount configuration and UI metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MountConfigSuggestion {
+    /// Recommended configuration.
+    pub default_config: PresetConfig,
+
+    /// Options for connection type (Fixed vs Removable).
+    pub connection_type_options: Vec<OptionMetadata>,
+
+    /// Options for media type (Flash vs Rotational).
+    pub media_type_options: Vec<OptionMetadata>,
+
+    /// Description for device timeout (Fixed).
+    pub device_timeout_desc: String,
+
+    /// Description for idle timeout (Removable).
+    pub idle_timeout_desc: String,
+}
+
+/// Suggests a mount configuration based on device properties.
+pub fn suggest_preset_config(
+    filesystem: SupportedFilesystem,
+    rota: Option<bool>,
+    removable: Option<bool>,
+    transport: Option<&str>,
+) -> MountConfigSuggestion {
+    // 1. Determine Recommended Values
+    let is_removable = removable.unwrap_or(false) || transport == Some("usb");
+    let recommended_device_type = if is_removable {
+        DeviceType::Removable
+    } else {
+        DeviceType::Fixed
+    };
+
+    let is_rotational = rota.unwrap_or(false);
+    let recommended_media_type = if is_rotational {
+        MediaType::Rotational
+    } else {
+        MediaType::Flash
+    };
+
+    let default_config = PresetConfig {
+        filesystem,
+        media_type: recommended_media_type,
+        device_type: recommended_device_type,
+        timeout: TimeoutConfig::default(),
+        custom_options: None,
+    };
+
+    // 2. Build Option Metadata with Descriptions
+    let connection_type_options = vec![
+        OptionMetadata {
+            value: "fixed".to_string(),
+            label: "Internal / Fixed".to_string(),
+            description: "Always connected. Waits for device at boot (systemd device timeout)."
+                .to_string(),
+            recommended: recommended_device_type == DeviceType::Fixed,
+        },
+        OptionMetadata {
+            value: "removable".to_string(),
+            label: "Removable".to_string(),
+            description: "Hot-swappable. Auto-mounts on access (systemd automount).".to_string(),
+            recommended: recommended_device_type == DeviceType::Removable,
+        },
+    ];
+
+    let media_type_options = vec![
+        OptionMetadata {
+            value: "flash".to_string(),
+            label: "Flash (SSD / SD)".to_string(),
+            description: " optimized for flash storage. Enables TRIM/Discard.".to_string(),
+            recommended: recommended_media_type == MediaType::Flash,
+        },
+        OptionMetadata {
+            value: "rotational".to_string(),
+            label: "Rotational (HDD)".to_string(),
+            description: "Optimized for spinning disks. Disables TRIM to avoid errors.".to_string(),
+            recommended: recommended_media_type == MediaType::Rotational,
+        },
+    ];
+
+    MountConfigSuggestion {
+        default_config,
+        connection_type_options,
+        media_type_options,
+        device_timeout_desc: "Time to wait for device at boot before failing.".to_string(),
+        idle_timeout_desc: "Time before unmounting idle device.".to_string(),
     }
 }
 
@@ -207,6 +373,7 @@ mod tests {
             filesystem: SupportedFilesystem::Exfat,
             media_type: MediaType::Flash,
             device_type: DeviceType::Removable,
+            timeout: TimeoutConfig::default(),
             custom_options: None,
         };
         let options = preset.generate_options(1000, 1000);
@@ -249,5 +416,42 @@ mod tests {
     fn test_driver_selection() {
         assert_eq!(SupportedFilesystem::Ntfs.driver_name(), "ntfs3");
         assert_eq!(SupportedFilesystem::Exfat.driver_name(), "exfat");
+    }
+
+    #[test]
+    fn test_suggestion_logic() {
+        // USB -> Removable
+        let sugg = suggest_preset_config(
+            SupportedFilesystem::Exfat,
+            Some(false),
+            Some(false),
+            Some("usb"),
+        );
+        assert_eq!(sugg.default_config.device_type, DeviceType::Removable);
+        assert!(
+            sugg.connection_type_options
+                .iter()
+                .find(|o| o.value == "removable")
+                .unwrap()
+                .recommended
+        );
+
+        // HDD -> Rotational
+        let sugg = suggest_preset_config(SupportedFilesystem::Ntfs, Some(true), Some(false), None);
+        assert_eq!(sugg.default_config.media_type, MediaType::Rotational);
+
+        // NVMe -> Fixed, Flash
+        let sugg = suggest_preset_config(
+            SupportedFilesystem::Ntfs,
+            Some(false),
+            Some(false),
+            Some("nvme"),
+        );
+        assert_eq!(sugg.default_config.device_type, DeviceType::Fixed);
+        assert_eq!(sugg.default_config.media_type, MediaType::Flash);
+
+        // Explicit Removable Flag -> Removable
+        let sugg = suggest_preset_config(SupportedFilesystem::Exfat, Some(false), Some(true), None);
+        assert_eq!(sugg.default_config.device_type, DeviceType::Removable);
     }
 }

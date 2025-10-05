@@ -26,7 +26,6 @@ function App() {
   const [appVersion] = useAtom(appVersionAtom);
   const [tauriStore] = useAtom(tauriStoreAtom);
   const [steamState] = useAtom(steamStateAtom);
-  console.error('devices = ', devices);
 
   // Initialize store once
   useEffect(() => {
@@ -75,19 +74,27 @@ function App() {
   };
 
   const handleDeconfigure = async (device: DeviceInfo) => {
-    if (!device.uuid) return;
+    // Device must have fsSpec and mountpoint to be deconfigured
+    if (!device.fsSpec || !device.mountpoint) {
+      toast.error("Cannot deconfigure: missing configuration spec or mount point");
+      return;
+    }
 
     // Use the global confirm dialog
     const confirmed = await confirm({
       title: "Confirm Deconfigure",
-      description: `Are you sure you want to remove the fstab configuration for ${device.label || device.name}? This will remove the auto-mount entry but will not unmount the device if it's currently mounted.`,
+      description: `Are you sure you want to remove the fstab configuration for ${device.label || device.name}? This will remove the auto-mount entry.`,
       variant: "default",
     });
 
     if (!confirmed) return;
 
     try {
-      await invoke("deconfigure_device", { uuid: device.uuid });
+      // Unified deconfigure command using fs_spec + mount_point
+      await invoke("deconfigure_device", {
+        fsSpec: device.fsSpec,
+        mountPoint: device.mountpoint,
+      });
       toast.success("Device configuration removed successfully");
       refresh();
     } catch (e) {

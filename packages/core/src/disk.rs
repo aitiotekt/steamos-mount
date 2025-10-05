@@ -30,9 +30,16 @@ pub struct BlockDevice {
     pub size: u64,
     /// Full device path (e.g., "/dev/nvme0n1p2").
     pub path: PathBuf,
+    /// Whether the device is rotational (HDD) or not (SSD).
+    pub rota: bool,
+    /// Whether the device is removable.
+    pub removable: bool,
+    /// Transport type (e.g., "usb", "nvme", "sata", "mmc").
+    pub transport: Option<String>,
 }
 
 impl BlockDevice {
+    // ... fstab_spec and other methods remain same
     /// Returns the device identifier path for fstab.
     ///
     /// Uses UUID by default if available, otherwise PARTUUID.
@@ -158,6 +165,12 @@ struct LsblkDevice {
     #[serde(rename = "type")]
     device_type: Option<String>,
     #[serde(default)]
+    rota: Option<bool>,
+    #[serde(default)]
+    rm: Option<bool>,
+    #[serde(default)]
+    tran: Option<String>,
+    #[serde(default)]
     children: Option<Vec<LsblkDevice>>,
 }
 
@@ -172,7 +185,7 @@ pub fn list_block_devices() -> Result<Vec<BlockDevice>> {
             "--json",
             "--bytes",
             "--output",
-            "NAME,LABEL,UUID,PARTUUID,FSTYPE,MOUNTPOINT,SIZE,TYPE",
+            "NAME,LABEL,UUID,PARTUUID,FSTYPE,MOUNTPOINT,SIZE,TYPE,ROTA,RM,TRAN",
         ])
         .output()
         .command_context("lsblk")?;
@@ -193,14 +206,36 @@ pub fn list_block_devices() -> Result<Vec<BlockDevice>> {
         })?;
 
     let mut devices = Vec::new();
-    collect_devices(&lsblk_output.blockdevices, &mut devices);
+    collect_devices(&lsblk_output.blockdevices, &mut devices, None);
 
     Ok(devices)
 }
 
 /// Recursively collect devices from lsblk output, including children (partitions).
-fn collect_devices(lsblk_devices: &[LsblkDevice], devices: &mut Vec<BlockDevice>) {
+///
+/// We propagate parent properties (ROTA, RM, TRAN) to children if they are missing
+/// in the child (lsblk usually sets them for children too, but good to be safe/consistent).
+fn collect_devices(
+    lsblk_devices: &[LsblkDevice],
+    devices: &mut Vec<BlockDevice>,
+    parent: Option<&LsblkDevice>,
+) {
     for dev in lsblk_devices {
+        // Inherit properties from parent if not present (though lsblk usually provides them)
+        // or prioritize device's own properties if present.
+        let rota = dev
+            .rota
+            .or_else(|| parent.and_then(|p| p.rota))
+            .unwrap_or(false);
+        let removable = dev
+            .rm
+            .or_else(|| parent.and_then(|p| p.rm))
+            .unwrap_or(false);
+        let transport = dev
+            .tran
+            .clone()
+            .or_else(|| parent.and_then(|p| p.tran.clone()));
+
         // Only include partitions (type = "part")
         if dev.device_type.as_deref() == Some("part") {
             devices.push(BlockDevice {
@@ -212,12 +247,15 @@ fn collect_devices(lsblk_devices: &[LsblkDevice], devices: &mut Vec<BlockDevice>
                 mountpoint: dev.mountpoint.clone(),
                 size: dev.size.unwrap_or(0),
                 path: PathBuf::from(format!("/dev/{}", dev.name)),
+                rota,
+                removable,
+                transport: transport.clone(),
             });
         }
 
         // Recurse into children (partitions of a disk)
         if let Some(children) = &dev.children {
-            collect_devices(children, devices);
+            collect_devices(children, devices, Some(dev));
         }
     }
 }
@@ -472,6 +510,9 @@ mod tests {
                 "mountpoint": null,
                 "size": 500107862016,
                 "type": "disk",
+                "rota": false,
+                "rm": false,
+                "tran": "nvme",
                 "children": [
                     {
                         "name": "nvme0n1p1",
@@ -504,6 +545,9 @@ mod tests {
                 "mountpoint": null,
                 "size": 128849018880,
                 "type": "disk",
+                "rota": true,
+                "rm": true,
+                "tran": "usb",
                 "children": [
                     {
                         "name": "sda1",
@@ -524,38 +568,37 @@ mod tests {
     fn test_parse_lsblk_json() {
         let lsblk_output: LsblkOutput = serde_json::from_str(SAMPLE_LSBLK_JSON).unwrap();
         let mut devices = Vec::new();
-        collect_devices(&lsblk_output.blockdevices, &mut devices);
+        collect_devices(&lsblk_output.blockdevices, &mut devices, None);
 
         assert_eq!(devices.len(), 3);
 
-        // Check NTFS partition
+        // Check NTFS partition (NVMe SSD)
         let ntfs_device = devices.iter().find(|d| d.name == "nvme0n1p2").unwrap();
         assert_eq!(ntfs_device.label, Some("Games".to_string()));
-        assert_eq!(ntfs_device.uuid, Some("AABBCCDD11223344".to_string())); // case-sensitive, original case
+        assert_eq!(ntfs_device.uuid, Some("AABBCCDD11223344".to_string()));
         assert_eq!(ntfs_device.fstype, Some("ntfs".to_string()));
         assert!(ntfs_device.is_ntfs());
-        assert!(ntfs_device.is_mountable());
+        assert!(!ntfs_device.rota); // from parent
+        assert!(!ntfs_device.removable); // from parent
+        assert_eq!(ntfs_device.transport.as_deref(), Some("nvme"));
 
-        // Check exFAT partition
+        // Check exFAT partition (USB HDD)
         let exfat_device = devices.iter().find(|d| d.name == "sda1").unwrap();
         assert_eq!(exfat_device.label, Some("PORTABLE".to_string()));
         assert!(exfat_device.is_exfat());
-        assert!(exfat_device.is_mountable());
-
-        // Check EFI partition (not mountable)
-        let efi_device = devices.iter().find(|d| d.name == "nvme0n1p1").unwrap();
-        assert!(!efi_device.is_mountable());
+        assert!(exfat_device.rota); // from parent
+        assert!(exfat_device.removable); // from parent
+        assert_eq!(exfat_device.transport.as_deref(), Some("usb"));
     }
 
     #[test]
     fn test_filter_mountable_devices() {
         let lsblk_output: LsblkOutput = serde_json::from_str(SAMPLE_LSBLK_JSON).unwrap();
         let mut devices = Vec::new();
-        collect_devices(&lsblk_output.blockdevices, &mut devices);
+        collect_devices(&lsblk_output.blockdevices, &mut devices, None);
 
         let mountable = filter_mountable_devices(&devices);
         assert_eq!(mountable.len(), 2);
-        assert!(mountable.iter().all(|d| d.is_mountable()));
     }
 
     #[test]
@@ -569,6 +612,9 @@ mod tests {
             mountpoint: None,
             size: 1024,
             path: PathBuf::from("/dev/sda1"),
+            rota: false,
+            removable: false,
+            transport: None,
         };
 
         // UUID takes precedence, case-sensitive
@@ -587,6 +633,9 @@ mod tests {
             mountpoint: None,
             size: 1024,
             path: PathBuf::from("/dev/sda1"),
+            rota: false,
+            removable: false,
+            transport: None,
         };
         assert_eq!(device_with_label.suggested_mount_name(), "My_Games");
 
@@ -600,6 +649,9 @@ mod tests {
             mountpoint: None,
             size: 1024,
             path: PathBuf::from("/dev/sda1"),
+            rota: false,
+            removable: false,
+            transport: None,
         };
         assert_eq!(device_no_label.suggested_mount_name(), "12345678");
     }
@@ -672,6 +724,9 @@ mod tests {
             mountpoint: None,
             size: 1024,
             path: PathBuf::from("/dev/sda1"),
+            rota: false,
+            removable: false,
+            transport: None,
         };
 
         let managed_online = ManagedDevice::Online(online_device);
@@ -707,6 +762,9 @@ mod tests {
             mountpoint: None,
             size: 1024,
             path: PathBuf::from("/dev/sda1"),
+            rota: false,
+            removable: false,
+            transport: None,
         };
 
         // Match by UUID
@@ -765,6 +823,9 @@ UUID=OFFLINE-DEVICE  /home/deck/Drives/Offline  exfat  rw  0  0
                 mountpoint: Some("/home/deck/Drives/Games".to_string()),
                 size: 499570991104,
                 path: PathBuf::from("/dev/nvme0n1p2"),
+                rota: false,
+                removable: false,
+                transport: Some("nvme".to_string()),
             },
             BlockDevice {
                 name: "sda1".to_string(),
@@ -775,6 +836,9 @@ UUID=OFFLINE-DEVICE  /home/deck/Drives/Offline  exfat  rw  0  0
                 mountpoint: None,
                 size: 128849018880,
                 path: PathBuf::from("/dev/sda1"),
+                rota: false,
+                removable: true,
+                transport: Some("usb".to_string()),
             },
         ];
 

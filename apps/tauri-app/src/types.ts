@@ -4,6 +4,11 @@ export interface ManagedEntryInfo {
     rawContent: string;
 }
 
+export interface SteamLibraryInfo {
+    path: string;
+    label: string;
+}
+
 // Device types matching the Rust backend
 export interface DeviceInfo {
     name: string;
@@ -18,18 +23,51 @@ export interface DeviceInfo {
     isDirty: boolean;
     isOffline: boolean;
     managedEntry?: ManagedEntryInfo;
+    fsSpec?: string;
+    steamLibraries: SteamLibraryInfo[];
+    rota?: boolean;
+    removable?: boolean;
+    transport?: string;
 }
 
 export interface MountConfig {
     uuid: string;
-    preset: "ssd" | "portable" | "custom";
     mediaType: "flash" | "rotational";
     deviceType: "fixed" | "removable";
+    deviceTimeoutSecs?: number;
+    idleTimeoutSecs?: number;
     customOptions?: string;
     mountPoint: string;
     forceRootCreation: boolean;
     injectSteam: boolean;
     steamLibraryPath?: string;
+}
+
+export interface OptionMetadata {
+    value: string;
+    label: string;
+    description: string;
+    recommended: boolean;
+}
+
+export interface PresetConfigDto {
+    mediaType: "flash" | "rotational";
+    deviceType: "fixed" | "removable";
+    deviceTimeoutSecs?: number;
+    idleTimeoutSecs?: number;
+}
+
+export interface MountConfigSuggestion {
+    defaultConfig: PresetConfigDto;
+    connectionTypeOptions: OptionMetadata[];
+    mediaTypeOptions: OptionMetadata[];
+    deviceTimeoutDesc: string;
+    idleTimeoutDesc: string;
+}
+
+export interface FstabPreview {
+    options: string;
+    fstabLine: string;
 }
 
 export interface SteamInjectionConfig {
@@ -44,11 +82,4 @@ export interface SteamState {
     vdfPath: string;
     libraries: string[];
     error?: string;
-}
-
-export interface PresetInfo {
-    id: string;
-    name: string;
-    description: string;
-    optionsPreview: string;
 }

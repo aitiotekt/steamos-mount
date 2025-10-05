@@ -5,12 +5,15 @@
 //!
 //! # Modules
 //!
+//! - [`device`]: Unified device abstraction (primary API)
 //! - [`disk`]: Disk scanning using `lsblk`
 //! - [`preset`]: Mount preset definitions (SSD, Portable)
 //! - [`fstab`]: Fstab parsing and writing
 //! - [`mount`]: Mount/unmount operations and dirty volume handling
 //! - [`steam`]: Steam VDF parsing and library injection
-//! - [`systemd`]: Systemd control (daemon-reload, session switching)
+//! - [`syscall`]: Systemd control (daemon-reload, session switching)
+//! - [`executor`]: Command execution with privilege escalation
+//! - [`protocol`]: Daemon communication protocol (HMAC-SHA256)
 //! - [`error`]: Error types
 //!
 //! # Example
@@ -49,6 +52,7 @@
 //! }
 //! ```
 
+pub mod device;
 pub mod disk;
 pub mod error;
 pub mod executor;
@@ -60,6 +64,10 @@ pub mod steam;
 pub mod syscall;
 
 // Re-export commonly used types
+pub use device::{
+    Device, DeviceConnectionState, ListDevicesConfig, find_online_block_device_by_uuid,
+    list_devices,
+};
 pub use disk::{
     BlockDevice, ManagedDevice, ManagedDevicesResult, OfflineDevice, normalize_fstype,
     vfs_type_to_fstype,

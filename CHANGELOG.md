@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.1.4
+
+### Added
+
+- **Unified Device API**: New `Device` type aggregating BlockDevice, FstabEntry, and Steam library info. Added `list_devices()`, `find_device_by_uuid()`, `deconfigure_device_with_ctx()`.
+- **Smart Preset Suggestions**: Backend recommends optimal mount configuration (Connection Type, Media Type) based on device properties (ROTA, REMOVABLE, TRAN).
+- **Configurable Timeouts**: Customizable device timeout (Fixed) and idle timeout (Removable) instead of hardcoded defaults.
+- **Orthogonal Options UI**: Mount dialog uses independent options (Connection Type, Storage Media, Timeouts) instead of preset dropdown.
+- **Real-time Preview**: Live fstab entry preview with 300ms debounce as users change options.
+- **Device Badges**: Transport type, storage type, and removable status badges in mount dialog header.
+
+### Changed
+
+- **Device Properties**: Added `rota`, `removable`, `transport` fields to `BlockDevice` via enhanced `lsblk` parsing.
+- **Code Organization**: Extracted Tauri context management from `commands.rs` to `context.rs`.
+- **Mount Configuration**: Replaced `PresetType` enum with orthogonal fields in `MountConfig`.
+- **Deconfigure Logic**: Unified `deconfigure_device()` now accepts fs_spec + mount_point for precise matching.
+
+### Documentation
+
+- Updated design docs with device property analysis flow and complete UI interaction diagrams.
+
+---
+
 ## 0.1.3
 
 ### Added

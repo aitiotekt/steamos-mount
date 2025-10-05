@@ -60,8 +60,6 @@ export function DeviceCard({
         return <Badge variant="secondary">Not Mounted</Badge>;
     };
 
-    const mountPoint = device.mountpoint || device.managedEntry?.mountPoint;
-
     return (
         <Card className={`hover:shadow-md transition-shadow flex flex-col h-full ${device.isOffline ? 'opacity-75' : ''}`}>
             <CardHeader className="pb-2">
@@ -70,8 +68,23 @@ export function DeviceCard({
                         <HardDrive className={`h-5 w-5 ${device.isOffline ? 'text-gray-400' : 'text-muted-foreground'}`} />
                         <CardTitle className="text-lg">{displayName}</CardTitle>
                     </div>
-                    <div className="flex gap-2">
-                        <Badge variant="outline">{fsLabel}</Badge>
+                    <div className="flex gap-1.5 flex-wrap justify-end items-center content-start max-w-[60%]">
+                        {device.transport && (
+                            <Badge variant="outline" className="px-1.5 h-5 text-[10px] font-mono uppercase bg-background">
+                                {device.transport}
+                            </Badge>
+                        )}
+                        {device.rota !== undefined && (
+                            <Badge variant="secondary" className="px-1.5 h-5 text-[10px]">
+                                {device.rota ? "ROTA" : "FLASH"}
+                            </Badge>
+                        )}
+                        {device.removable && (
+                            <Badge variant="outline" className="px-1.5 h-5 text-[10px] bg-background">
+                                Removable
+                            </Badge>
+                        )}
+                        <Badge variant="outline" className="px-1.5 h-5 text-[10px] font-mono bg-background">{fsLabel}</Badge>
                         {renderStatusBadge()}
                     </div>
                 </div>
@@ -95,10 +108,10 @@ export function DeviceCard({
                     )}
 
                     {
-                        mountPoint && (
+                        device.mountpoint && (
                             <>
                                 <span className="text-muted-foreground">Mount Point</span>
-                                <span className="font-mono text-xs text-right">{mountPoint}</span>
+                                <span className="font-mono text-xs text-right">{device.mountpoint}</span>
                             </>
                         )
                     }
