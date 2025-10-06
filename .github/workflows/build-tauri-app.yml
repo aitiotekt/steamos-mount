@@ -107,8 +107,8 @@ jobs:
           TAURI_BUNDLER_NEW_APPIMAGE_FORMAT: "true"
         with:
           projectPath: "./apps/tauri-app"
-          tagName: app-v__VERSION__
-          releaseName: "App v__VERSION__"
+          tagName: steamos-mount-__VERSION__
+          releaseName: "Steamos Mount v__VERSION__"
           releaseBody: ${{ env.RELEASE_BODY }}
           releaseDraft: true
           prerelease: ${{ steps.get_version.outputs.prerelease }}
